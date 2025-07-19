@@ -1,0 +1,18 @@
+{
+  "name": "bybit-bot-hetzner",
+  "version": "1.0.0",
+  "description": "Bybit trading bot for Hetzner VPS",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.2",
+    "bybit-api": "^3.9.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
