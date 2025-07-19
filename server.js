@@ -6,15 +6,13 @@ import { RestClientV5 } from 'bybit-api';
 
 // --- APLIKACIJOS IR SERVERIO KONFIGŪRACIJA ---
 const app = express();
-// Serveris veiks per 3000 portą
 const port = process.env.PORT || 3000; 
-// Leidžia apdoroti JSON formato užklausas
-app.use(express.json()); 
+app.use(express.json()); // Leidžia apdoroti JSON formato užklausas
 
 // --- KONFIGŪRACIJA IR PREKYBOS TAISYKLĖS ---
-const FIXED_RISK_USD = 100.0;
-const MIN_SL_PERCENT = 1.5;
-const MAX_SL_PERCENT = 5.0;
+const FIXED_RISK_USD = 100.0; // Fiksuota rizika vienam sandoriui
+const MIN_SL_PERCENT = 0.0;
+const MAX_SL_PERCENT = 10.0;
 
 // --- APLINKOS KINTAMIEJI ---
 const {
@@ -23,6 +21,17 @@ const {
     BYBIT_API_KEY,
     BYBIT_API_SECRET
 } = process.env;
+
+// --- BŪSENOS SAUGOJIMAS ---
+// Objektas, kuriame saugosime laukiančių (pending) orderių ID pagal tickerį
+// Būtinas, kad žinotume, kurį orderį atšaukti gavus 'CANCEL_PENDING'
+const pendingOrders = {};
+
+// --- BYBIT KLIENTO INICIALIZAVIMAS ---
+const bybitClient = new RestClientV5({
+    key: BYBIT_API_KEY,
+    secret: BYBIT_API_SECRET,
+});
 
 // --- PAGALBINĖS FUNKCIJOS ---
 const sendTelegramMessage = async (message) => {
@@ -42,88 +51,178 @@ const sendTelegramMessage = async (message) => {
 
 // --- PAGRINDINIS MARŠRUTAS (WEBHOOK HANDLER) ---
 app.post('/webhook', async (req, res) => {
-    console.log('Gautas signalas į /webhook maršrutą');
-
-    if (!BYBIT_API_KEY || !BYBIT_API_SECRET) {
-        const error_message = '❌ Kritinė konfigūracijos klaida: API raktai nėra nustatyti .env faile.';
-        console.error(error_message);
-        await sendTelegramMessage(error_message);
-        return res.status(500).json({ error: 'Server configuration error.' });
-    }
-
-    const bybitClient = new RestClientV5({
-        key: BYBIT_API_KEY,
-        secret: BYBIT_API_SECRET,
-    });
+    console.log('--- Naujas signalas ---');
+    const data = req.body;
+    console.log('Gauti duomenys:', data);
 
     try {
-        const data = req.body;
-        console.log('Gauti duomenys:', data);
-
-        if (data.type === 'long_setup' || data.type === 'short_setup') {
-            const entry_price = parseFloat(data.entry);
-            const sl_price = parseFloat(data.stoploss);
-            const tp_price = parseFloat(data.target1);
-            const side = data.type === 'long_setup' ? 'Buy' : 'Sell';
-
-            let ticker = data.ticker;
-            if (ticker.endsWith('.P')) {
-                ticker = ticker.slice(0, -2);
-            }
-
-            const sl_percent = Math.abs(entry_price - sl_price) / entry_price;
-
-            if (sl_percent * 100 < MIN_SL_PERCENT || sl_percent * 100 > MAX_SL_PERCENT) {
-                const msg = `⚠️ Signalas ${ticker} atmestas. SL plotis ${ (sl_percent * 100).toFixed(2)}% neatitinka kriterijų.`;
-                console.log(msg);
-                await sendTelegramMessage(msg);
-                return res.status(200).json({ status: 'rejected', message: msg });
-            }
-
-            const position_size_in_asset = FIXED_RISK_USD / (entry_price * sl_percent);
-            const position_size_rounded = position_size_in_asset.toFixed(3);
-
-            if (parseFloat(position_size_rounded) <= 0) {
-                const msg = `⚠️ Signalas ${ticker} atmestas. Apskaičiuotas pozicijos dydis per mažas.`;
-                console.log(msg);
-                await sendTelegramMessage(msg);
-                return res.status(200).json({ status: 'rejected', message: msg });
-            }
-
-            console.log(`Siunčiamas įsakymas: ${side} ${position_size_rounded} ${ticker}`);
-            const orderResponse = await bybitClient.submitOrder({
-                category: 'linear',
-                symbol: ticker,
-                side: side,
-                orderType: 'Market',
-                qty: position_size_rounded,
-                takeProfit: String(tp_price),
-                stopLoss: String(sl_price),
-                timeInForce: 'GTC',
-            });
-
-            if (orderResponse.retCode === 0) {
-                const msg = `✅ Įsakymas sėkmingai išsiųstas: ${ticker} ${side} ${position_size_rounded}`;
-                await sendTelegramMessage(msg);
-                return res.status(200).json({ status: 'success', data: orderResponse });
-            } else {
-                throw new Error(`Bybit klaida: ${orderResponse.retMsg} (Kodas: ${orderResponse.retCode})`);
-            }
-        } else {
-            const msg = `ℹ️ Gautas informacinis signalas: ${data.type || 'Nežinomas tipas'}`;
-            console.log(msg);
-            await sendTelegramMessage(msg);
-            return res.status(200).json({ status: 'info_received' });
+        // Tikriname, ar API raktai nustatyti
+        if (!BYBIT_API_KEY || !BYBIT_API_SECRET) {
+            throw new Error('Kritinė konfigūracijos klaida: API raktai nėra nustatyti .env faile.');
         }
+
+        // Tikriname, ar yra 'action' laukas
+        if (!data.action) {
+            console.log("Signalas neturi 'action' lauko. Ignoruojama.");
+            return res.status(200).json({ status: 'ignored', message: 'No action specified.' });
+        }
+
+        // Išvalome tickerį, jei jis turi '.P' priesagą
+        let ticker = data.ticker;
+        if (ticker && ticker.endsWith('.P')) {
+            ticker = ticker.slice(0, -2);
+        }
+
+        // Veiksmų skirstytuvas (Router)
+        switch (data.action) {
+            
+            // --- 1. SĄLYGINIO ORDERIO SUKŪRIMAS ---
+            case 'OPEN_CONDITIONAL': {
+                const entry_price = parseFloat(data.entryPrice);
+                const sl_price = parseFloat(data.stopLoss);
+                const side = data.direction === 'long' ? 'Buy' : 'Sell';
+
+                // Rizikos patikrinimas
+                const sl_percent = Math.abs(entry_price - sl_price) / entry_price;
+                if (sl_percent * 100 < MIN_SL_PERCENT || sl_percent * 100 > MAX_SL_PERCENT) {
+                    throw new Error(`Signalas ${ticker} atmestas. SL plotis ${ (sl_percent * 100).toFixed(2)}% neatitinka kriterijų.`);
+                }
+
+                // Pozicijos dydžio skaičiavimas
+                const position_size_in_asset = FIXED_RISK_USD / (entry_price * sl_percent);
+                const position_size_rounded = position_size_in_asset.toFixed(3); // Pakeiskite skaičių po kablelio pagal poreikį
+
+                if (parseFloat(position_size_rounded) <= 0) {
+                    throw new Error(`Signalas ${ticker} atmestas. Apskaičiuotas pozicijos dydis per mažas.`);
+                }
+
+                console.log(`Ruosiamas sąlyginis orderis: ${side} ${position_size_rounded} ${ticker} ties kaina ${entry_price}`);
+                
+                const orderResponse = await bybitClient.submitOrder({
+                    category: 'linear',
+                    symbol: ticker,
+                    side: side,
+                    orderType: 'Market', // Sąlyginis RINKOS orderis
+                    qty: position_size_rounded,
+                    triggerPrice: String(entry_price),
+                    triggerDirection: side === 'Buy' ? 1 : 2, // 1: Kaina kyla iki trigger, 2: Kaina krenta iki trigger
+                    positionIdx: data.positionIdx, // **HEDGE MODE**
+                });
+
+                if (orderResponse.retCode !== 0) {
+                    throw new Error(`Bybit klaida kuriant sąlyginį orderį: ${orderResponse.retMsg}`);
+                }
+                
+                // Išsaugome orderio ID, kad galėtume jį atšaukti
+                pendingOrders[ticker] = orderResponse.result.orderId;
+                console.log(`Sąlyginis orderis ${ticker} sukurtas. ID: ${pendingOrders[ticker]}`);
+                await sendTelegramMessage(`✅ Sąlyginis orderis *${ticker}* (${side}) sukurtas. Laukiama kainos: ${entry_price}`);
+                break;
+            }
+
+            // --- 2. STOP-LOSS / TAKE-PROFIT NUSTATYMAS ---
+            case 'SET_SL_TP': {
+                console.log(`Nustatomas SL/TP pozicijai ${ticker}`);
+                const sl_price = parseFloat(data.stopLoss);
+                const tp_price = parseFloat(data.takeProfit);
+
+                const response = await bybitClient.setTradingStop({
+                    category: 'linear',
+                    symbol: ticker,
+                    stopLoss: String(sl_price),
+                    takeProfit: String(tp_price),
+                    positionIdx: data.positionIdx, // **HEDGE MODE**
+                });
+
+                if (response.retCode !== 0) {
+                    throw new Error(`Bybit klaida nustatant SL/TP: ${response.retMsg}`);
+                }
+                await sendTelegramMessage(`✅ Pozicijai *${ticker}* sėkmingai nustatytas SL: ${sl_price} ir TP: ${tp_price}.`);
+                break;
+            }
+
+            // --- 3. PELNO FIKSAVIMAS ARBA UŽDARYMAS DĖL SENUMO ---
+            case 'TAKE_PROFIT':
+            case 'CLOSE_EXISTING': {
+                const reason = data.action === 'TAKE_PROFIT' ? 'pasiektas pelno tikslas' : 'signalas paseno';
+                console.log(`Uždaroma pozicija ${ticker}, nes ${reason}`);
+
+                // Gauname atidarytos pozicijos duomenis, kad žinotume jos dydį
+                const positions = await bybitClient.getPositions({ category: 'linear', symbol: ticker });
+                const position = positions.result.list.find(p => p.positionIdx === data.positionIdx);
+
+                if (!position || parseFloat(position.size) === 0) {
+                    throw new Error(`Nerasta aktyvi pozicija ${ticker}, kurią būtų galima uždaryti.`);
+                }
+                
+                const side = position.side === 'Buy' ? 'Sell' : 'Buy'; // Priešinga pusė uždarymui
+                const size = position.size;
+
+                const orderResponse = await bybitClient.submitOrder({
+                    category: 'linear',
+                    symbol: ticker,
+                    side: side,
+                    orderType: 'Market',
+                    qty: size,
+                    reduceOnly: true, // **SVARBU**: Tik uždaro poziciją, neatidaro naujos
+                    positionIdx: data.positionIdx, // **HEDGE MODE**
+                });
+
+                if (orderResponse.retCode !== 0) {
+                    throw new Error(`Bybit klaida uždarant poziciją: ${orderResponse.retMsg}`);
+                }
+                await sendTelegramMessage(`✅ Pozicija *${ticker}* sėkmingai uždaryta, nes ${reason}.`);
+                break;
+            }
+            
+            // --- 4. LAUKIANČIO ORDERIO ATŠAUKIMAS ---
+            case 'CANCEL_PENDING': {
+                const orderIdToCancel = pendingOrders[ticker];
+                if (!orderIdToCancel) {
+                    throw new Error(`Nerastas joks laukiantis orderis simboliui ${ticker}, kurį būtų galima atšaukti.`);
+                }
+
+                console.log(`Atšaukiamas laukiantis orderis ${orderIdToCancel} simboliui ${ticker}`);
+                const response = await bybitClient.cancelOrder({
+                    category: 'linear',
+                    symbol: ticker,
+                    orderId: orderIdToCancel,
+                });
+
+                if (response.retCode !== 0) {
+                    // Klaida 140025 reiškia, kad orderis jau neegzistuoja (pvz., buvo įvykdytas) - tai nėra tikra klaida
+                    if (response.retCode === 140025) {
+                        console.log(`Orderis ${orderIdToCancel} jau buvo įvykdytas arba atšauktas.`);
+                        await sendTelegramMessage(`⚠️ Bandyta atšaukti *${ticker}* orderį, bet jis jau buvo įvykdytas arba atšauktas.`);
+                    } else {
+                        throw new Error(`Bybit klaida atšaukiant orderį: ${response.retMsg}`);
+                    }
+                } else {
+                    await sendTelegramMessage(`✅ Laukiantis orderis *${ticker}* sėkmingai atšauktas.`);
+                }
+                
+                // Išvalome orderio ID iš atminties
+                delete pendingOrders[ticker];
+                break;
+            }
+
+            default:
+                console.log(`Gauta nepalaikoma komanda: ${data.action}`);
+                break;
+        }
+
+        res.status(200).json({ status: 'success', message: `Action '${data.action}' processed.` });
+
     } catch (error) {
-        const errorMessage = error.message;
-        console.error('Klaida apdorojant užklausą:', error);
-        await sendTelegramMessage(`❌ Įvyko kritinė klaida: ${errorMessage}`);
-        return res.status(500).json({ error: errorMessage });
+        console.error('Klaida apdorojant signalą:', error.message);
+        await sendTelegramMessage(`❌ Įvyko klaida: ${error.message}`);
+        res.status(500).json({ status: 'error', error: error.message });
     }
 });
 
 // --- SERVERIO PALEIDIMAS ---
 app.listen(port, '0.0.0.0', () => {
-    console.log(`Bybit botas paleistas ir laukia signalų per http://0.0.0.0:${port}/webhook`);
+    const msg = `🚀 Bybit botas paleistas ir laukia signalų per http://0.0.0.0:${port}/webhook`;
+    console.log(msg);
+    sendTelegramMessage(msg);
 });
