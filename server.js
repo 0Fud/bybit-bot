@@ -14,7 +14,11 @@ const bybitClient = new RestClientV5({ key: BYBIT_API_KEY, secret: BYBIT_API_SEC
 const sendTelegramMessage = async (message) => {
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) return;
     try {
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { chat_id: TELEGRAM_CHANNEL_ID, text: message, parse_mode: 'Markdown' });
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { 
+            chat_id: TELEGRAM_CHANNEL_ID, 
+            text: message, 
+            parse_mode: 'Markdown' 
+        });
     } catch (error) {
         console.error('Klaida siunčiant pranešimą į Telegram:', error.response?.data || error.message);
     }
@@ -32,24 +36,23 @@ app.post('/webhook', async (req, res) => {
     try {
         const { ticker, side, qty, triggerPrice } = data;
 
+        // Pataisyta logika triggerDirection
         const order = {
             category: 'linear',
             symbol: ticker,
             side: side,
-            orderType: 'Market', // Nurodo, kad kai orderis aktyvuosis, jis bus Market tipo
+            orderType: 'Market',
             qty: String(qty),
             triggerPrice: String(triggerPrice),
-            triggerDirection: side === 'Buy' ? 'Rise' : 'Fall',
-            orderFilter: 'StopOrder',
-            
-            // =================================================================
-            //  ŠI EILUTĖ IŠSPRENDŽIA PROBLEMĄ
-            //  Nurodome, kad pats sąlyginis orderis yra Market tipo.
-            // =================================================================
+            // PATAISYTA: Buy reikia Fall (stop loss tipo), Sell reikia Rise
+            // Alternatyvus variantas su string reikšmėmis:
+            // triggerDirection: side === 'Buy' ? 'Rise' : 'Fall',
+            triggerDirection: side === 'Buy' ? 1 : 2, // 1 = Rise, 2 = Fall
             stopOrderType: 'Market',
+            // Pašalintas orderFilter parametras
         };
         
-        console.log('Pateikiamas TEISINGAS sąlyginis orderis su parametrais:', order);
+        console.log('Pateikiamas PATAISYTAS sąlyginis orderis su parametrais:', order);
         const orderResponse = await bybitClient.submitOrder(order);
 
         if (orderResponse.retCode !== 0) {
@@ -71,4 +74,4 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-app.listen(port, '0.0.0.0', () => console.log(`🚀 Botas (FINALINĖ TESTO VERSIJA) veikia ant porto ${port}`));
+app.listen(port, '0.0.0.0', () => console.log(`🚀 Botas (PATAISYTA VERSIJA) veikia ant porto ${port}`));
