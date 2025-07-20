@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whitepaper: Automatizuotas Bybit Prekybos Botas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* gray-900 */
+            color: #D1D5DB; /* gray-300 */
+        }
+        .container {
+            max-width: 1024px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        h1, h2, h3, h4 {
+            color: #F9FAFB; /* gray-50 */
+            border-bottom: 1px solid #374151; /* gray-700 */
+            padding-bottom: 0.5rem;
+            margin-top: 2.5rem;
+            margin-bottom: 1.5rem;
+        }
+        h1 { font-size: 2.5rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.025em; }
+        h2 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 600; }
+        h3 { font-size: 1.5rem; line-height: 2rem; font-weight: 600; }
+        h4 { font-size: 1.125rem; line-height: 1.75rem; font-weight: 600; border-bottom: none; }
+        code.inline {
+            font-family: 'Roboto Mono', monospace;
+            background-color: #374151; /* gray-700 */
+            color: #FBBF24; /* amber-400 */
+            padding: 0.15rem 0.4rem;
+            border-radius: 0.25rem;
+            font-size: 0.9em;
+        }
+        pre {
+            background-color: #1F2937; /* gray-800 */
+            border: 1px solid #4B5563; /* gray-600 */
+            border-radius: 0.5rem;
+            padding: 1.25rem;
+            overflow-x: auto;
+            margin-top: 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+        }
+        code.block {
+            font-family: 'Roboto Mono', monospace;
+            color: #E5E7EB; /* gray-200 */
+        }
+        p, ul, ol {
+            line-height: 1.75;
+            margin-bottom: 1.25rem;
+        }
+        a {
+            color: #60A5FA; /* blue-400 */
+            text-decoration: none;
+            font-weight: 500;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            vertical-align: middle;
+        }
+        .badge-blue { background-color: #1E40AF; color: #BFDBFE; }
+        .badge-green { background-color: #065F46; color: #A7F3D0; }
+        .badge-red { background-color: #991B1B; color: #FECACA; }
+        .abstract {
+            background-color: #1F2937;
+            border-left: 4px solid #3B82F6;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+        }
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .toc ul li a {
+            display: block;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #374151;
+            transition: all 0.2s ease-in-out;
+        }
+        .toc ul li a:hover {
+            background-color: #1F2937;
+            padding-left: 1rem;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+
+        <header class="text-center mb-12">
+            <h1 class="!mt-0 !border-none">Whitepaper: Automatizuotas Bybit Prekybos Botas</h1>
+            <p class="text-xl text-gray-400 mt-4">Versija 3.0 (Reaktyvusis Modelis)</p>
+            <p class="text-sm text-gray-500">Paskutinis atnaujinimas: 2025-07-20</p>
+        </header>
+
+        <div class="abstract">
+            <h3 class="!mt-0 !border-none">Santrauka (Abstract)</h3>
+            <p class="mb-0">Šis dokumentas pristato automatizuotą prekybos sistemą (botą), sukurtą veikti Bybit kriptovaliutų biržoje. Sistema, parašyta Node.js aplinkoje, veikia kaip tarpininkas tarp TradingView platformoje generuojamų prekybos signalų ir Bybit API. Boto architektūra paremta "reaktyviuoju" modeliu – jis nevykdo sąlyginių orderių, o atidaro pozicijas rinkos kaina iškart gavęs signalą, tuo pačiu metu nustatydamas Stop Loss ir Take Profit lygius. Šis metodas užtikrina strategijos paprastumą, patikimumą ir leidžia efektyviai valdyti riziką bei palaikyti "Hedge" režimo pozicijas.</p>
+        </div>
+
+        <div class="toc mb-12">
+            <h2 class="!mt-0">Turinys</h2>
+            <ul>
+                <li><a href="#introduction">1. Įvadas</a></li>
+                <li><a href="#architecture">2. Sistemos Architektūra ir Technologijos</a></li>
+                <li><a href="#logic">3. Prekybos Logika ir Strategija</a></li>
+                <li><a href="#workflow">4. Darbo Eiga ir Signalų Apdorojimas</a></li>
+                <li><a href="#configuration">5. Konfigūracija ir Paleidimas</a></li>
+                <li><a href="#security">6. Saugumo Aspektai</a></li>
+                <li><a href="#conclusion">7. Išvados ir Tolimesnė Plėtra</a></li>
+            </ul>
+        </div>
+        
+        <section id="introduction">
+            <h2>1. Įvadas</h2>
+            <p>Dinamiškoje kriptovaliutų prekybos rinkoje greitis, tikslumas ir disciplinos laikymasis yra esminiai sėkmės faktoriai. Manuali prekyba, nors ir lanksti, yra veikiama žmogiškųjų klaidų, emocijų ir fizinių galimybių ribų. Automatizuotos prekybos sistemos siūlo sprendimą, leidžiantį vykdyti prekybos strategijas 24/7 be emocinio įsikišimo.</p>
+            <p>Šis projektas sprendžia problemą, kaip efektyviai ir patikimai automatizuoti prekybą, remiantis sudėtingais techninės analizės indikatoriais, prieinamais TradingView platformoje. Sukurtas botas yra ne tik įrankis, bet ir visa sistema, apimanti signalų priėmimą, rizikos valdymą, pozicijų vykdymą ir ataskaitų teikimą.</p>
+            <h4>1.1. Projekto Tikslai</h4>
+            <ul class="list-disc list-inside space-y-2">
+                <li><strong>Automatizavimas:</strong> Pilnai automatizuoti prekybos ciklą nuo signalo gavimo iki pozicijos uždarymo.</li>
+                <li><strong>Patikimumas:</strong> Sukurti stabilią ir klaidoms atsparią sistemą, kuri veiktų be pertrūkių.</li>
+                <li><strong>Paprastumas:</strong> Įgyvendinti "reaktyviąją" strategiją, kuri eliminuoja sudėtingą sąlyginių orderių valdymą.</li>
+                <li><strong>Rizikos Valdymas:</strong> Integruoti dinamišką pozicijos dydžio skaičiavimą, paremtą fiksuota pinigine rizika vienam sandoriui.</li>
+            </ul>
+        </section>
+
+        <section id="architecture">
+            <h2>2. Sistemos Architektūra ir Technologijos</h2>
+            <p>Sistema sudaryta iš trijų pagrindinių komponentų: TradingView (signalų šaltinis), Node.js Boto (loginis centras) ir Bybit (vykdymo platforma).</p>
+            <img src="https://placehold.co/1000x300/1F2937/E5E7EB?text=TradingView+(Signalai)+%E2%86%92+Botas+(Logika)+%E2%86%92+Bybit+(Vykdymas)" alt="Architektūros diagrama" class="rounded-lg mb-4 w-full">
+            
+            <h4>2.1. Technologijų Rinkinys (Stack)</h4>
+            <ul class="list-disc list-inside space-y-2">
+                <li><strong>Runtime:</strong> <code class="inline">Node.js (v18+)</code> – Pasirinkta dėl savo asinchroninės prigimties ir didelio našumo apdorojant I/O operacijas (tinklo užklausas).</li>
+                <li><strong>Serveris:</strong> <code class="inline">Express.js</code> – Minimalistinis ir lankstus Node.js karkasas, idealiai tinkantis kurti API ir priimti webhook'us.</li>
+                <li><strong>Bybit API Klientas:</strong> <code class="inline">bybit-api (v5)</code> – Oficiali biblioteka, supaprastinanti komunikaciją su Bybit REST API v5.</li>
+                <li><strong>HTTP Užklausos:</strong> <code class="inline">axios</code> – Naudojamas pranešimų siuntimui į Telegram API.</li>
+                <li><strong>Aplinkos Kintamieji:</strong> <code class="inline">dotenv</code> – Leidžia saugiai laikyti konfigūracijos kintamuosius (API raktus) atskirai nuo kodo.</li>
+            </ul>
+        </section>
+
+        <section id="logic">
+            <h2>3. Prekybos Logika ir Strategija</h2>
+            <p>Boto pagrindas – "reaktyvioji" strategija. Skirtingai nuo sistemų, kurios iš anksto pateikia sąlyginius orderius ir laukia jų įvykdymo, šis botas veikia pagal principą "gauk signalą – veik dabar".</p>
+            
+            <h4>3.1. Kodėl "Reaktyvioji" Strategija?</h4>
+            <p>Ankstesnėse iteracijose buvo svarstomas sąlyginių orderių modelis, tačiau jo buvo atsisakyta dėl šių trūkumų:</p>
+            <ul class="list-disc list-inside space-y-2">
+                <li><strong>Būsenos Valdymo Sudėtingumas:</strong> Reikėtų sekti kiekvieno laukiančio orderio ID, saugoti jį duomenų bazėje ar faile, kad būtų galima atšaukti. Tai didina klaidų tikimybę.</li>
+                <li><strong>Hedge Režimo Problemos:</strong> Bybit platformoje gali būti apribojimų, kiek sąlyginių orderių galima pateikti vienai porai, kas apsunkintų long/short pozicijų valdymą.</li>
+                <li><strong>Signalų Atnaujinimas:</strong> Jei indikatorius atnaujintų signalą (pvz., pakeistų įėjimo kainą), botas turėtų atlikti sudėtingą operaciją: atšaukti seną orderį ir pateikti naują.</li>
+            </ul>
+            <p>"Reaktyvusis" modelis šias problemas išsprendžia, nes botas yra "stateless" – jam nereikia atsiminti praeities veiksmų, kad atliktų dabartinius.</p>
+
+            <h4>3.2. Rizikos ir Pozicijos Dydžio Valdymas</h4>
+            <p>Vienas iš kertinių sistemos elementų – griežtas rizikos valdymas. Boto kode nustatytas kintamasis <code class="inline">FIXED_RISK_USD</code> (pvz., 1.0) apibrėžia maksimalią piniginę sumą, kuria rizikuojama viename sandoryje.</p>
+            <p>Pozicijos dydis apskaičiuojamas dinamiškai prieš pat orderio pateikimą pagal formulę:</p>
+            <pre><code class="block">Pozicijos Dydis = Fiksuota Rizika USD / (Dabartinė Kaina × Stop Loss Plotis %)</code></pre>
+            <p>Tai užtikrina, kad nepriklausomai nuo Stop Loss atstumo nuo įėjimo kainos, potencialus nuostolis visada bus artimas nustatytai <code class="inline">FIXED_RISK_USD</code> reikšmei.</p>
+        </section>
+
+        <section id="workflow">
+            <h2>4. Darbo Eiga ir Signalų Apdorojimas</h2>
+            <p>Botas reaguoja tik į du specifinius signalus, kuriuos atpažįsta pagal <code class="inline">action</code> lauką gautame JSON pranešime.</p>
+
+            <h4>4.1. Veiksmas: <span class="badge badge-green">ENTER_MARKET</span></h4>
+            <ol class="list-decimal list-inside space-y-2">
+                <li>Iš TradingView gaunamas <code class="inline">POST</code> webhook'as su <code class="inline">action: "ENTER_MARKET"</code>.</li>
+                <li>Botas išanalizuoja gautus duomenis: <code class="inline">ticker</code>, <code class="inline">direction</code>, <code class="inline">stopLoss</code>, <code class="inline">takeProfit</code>.</li>
+                <li>Kreipiasi į Bybit API, kad gautų naujausią <code class="inline">ticker</code> rinkos kainą.</li>
+                <li>Apskaičiuoja pozicijos dydį pagal rizikos valdymo formulę.</li>
+                <li>Pateikia Bybit vieną <code class="inline">Market Order</code>, kuriame iškart nurodo ir pozicijos dydį, ir SL/TP lygius.</li>
+                <li>Sėkmės atveju, išsiunčia patvirtinimo pranešimą į Telegram.</li>
+            </ol>
+
+            <h4>4.2. Veiksmas: <span class="badge badge-red">CLOSE_BY_AGE</span></h4>
+            <ol class="list-decimal list-inside space-y-2">
+                <li>Iš TradingView gaunamas webhook'as su <code class="inline">action: "CLOSE_BY_AGE"</code>. Tai reiškia, kad pozicija per ilgai nepasiekė nei SL, nei TP.</li>
+                <li>Botas kreipiasi į Bybit API, kad patikrintų, ar nurodyta pozicija (<code class="inline">ticker</code> ir <code class="inline">positionIdx</code>) vis dar aktyvi.</li>
+                <li>Jei pozicija randama, botas pateikia priešingos krypties <code class="inline">Market Order</code> su <code class="inline">reduceOnly: true</code> vėliavėle, kad ją uždarytų.</li>
+                <li>Jei pozicija nerandama (galbūt jau buvo uždaryta anksčiau), botas tiesiog užregistruoja šį faktą ir baigia darbą.</li>
+                <li>Sėkmės atveju, išsiunčia patvirtinimo pranešimą į Telegram.</li>
+            </ol>
+        </section>
+
+        <section id="configuration">
+            <h2>5. Konfigūracija ir Paleidimas</h2>
+            <p>Sistemos paleidimas reikalauja dviejų pagrindinių konfigūracijos žingsnių: paruošti aplinką ir nustatyti alertus TradingView.</p>
+
+            <h4>5.1. Aplinkos Paruošimas</h4>
+            <p>Sukurkite <code class="inline">.env</code> failą projekto šakninėje direktorijoje:</p>
+            <pre><code class="block">BYBIT_API_KEY=JUSU_BYBIT_API_RAKTAS
+BYBIT_API_SECRET=JUSU_BYBIT_API_SLAPUKAS
+TELEGRAM_BOT_TOKEN=JUSU_TELEGRAM_BOTO_TOKENAS
+TELEGRAM_CHANNEL_ID=JUSU_TELEGRAM_KANALO_ID
+PORT=3000</code></pre>
+
+            <h4>5.2. TradingView Alertų Konfigūracija</h4>
+            <p>Būtina sukurti <strong>keturis</strong> atskirus alertus.</p>
+
+            <h4 class="!mt-8">Pozicijos Atidarymas (LONG)</h4>
+            <ul class="list-disc list-inside">
+                <li><strong>Sąlyga:</strong> <code class="inline">Entered Position</code> (Long)</li>
+                <li><strong>Pranešimas (Webhook JSON):</strong></li>
+            </ul>
+            <pre><code class="block">{
+  "action": "ENTER_MARKET",
+  "ticker": "{{ticker}}",
+  "direction": "long",
+  "positionIdx": 1,
+  "stopLoss": "{{stoploss}}",
+  "takeProfit": "{{target1}}"
+}</code></pre>
+
+            <h4>Pozicijos Atidarymas (SHORT)</h4>
+             <ul class="list-disc list-inside">
+                <li><strong>Sąlyga:</strong> <code class="inline">Entered Position</code> (Short)</li>
+                <li><strong>Pranešimas (Webhook JSON):</strong></li>
+            </ul>
+            <pre><code class="block">{
+  "action": "ENTER_MARKET",
+  "ticker": "{{ticker}}",
+  "direction": "short",
+  "positionIdx": 2,
+  "stopLoss": "{{stoploss}}",
+  "takeProfit": "{{target1}}"
+}</code></pre>
+
+            <h4>Uždarymas Dėl Laiko (LONG)</h4>
+            <ul class="list-disc list-inside">
+                <li><strong>Sąlyga:</strong> <code class="inline">Invalidated by the Age</code> (Long)</li>
+                <li><strong>Pranešimas (Webhook JSON):</strong></li>
+            </ul>
+            <pre><code class="block">{
+  "action": "CLOSE_BY_AGE",
+  "ticker": "{{ticker}}",
+  "direction": "long",
+  "positionIdx": 1
+}</code></pre>
+
+            <h4>Uždarymas Dėl Laiko (SHORT)</h4>
+            <ul class="list-disc list-inside">
+                <li><strong>Sąlyga:</strong> <code class="inline">Invalidated by the Age</code> (Short)</li>
+                <li><strong>Pranešimas (Webhook JSON):</strong></li>
+            </ul>
+            <pre><code class="block">{
+  "action": "CLOSE_BY_AGE",
+  "ticker": "{{ticker}}",
+  "direction": "short",
+  "positionIdx": 2
+}</code></pre>
+        </section>
+
+        <section id="security">
+            <h2>6. Saugumo Aspektai</h2>
+            <p>Automatizuotose prekybos sistemose saugumas yra aukščiausias prioritetas. Būtina laikytis šių rekomendacijų:</p>
+            <ol class="list-decimal list-inside space-y-3">
+                <li><strong>Minimalių Teisių Principas:</strong> Bybit platformoje sukurtiems API raktams suteikite tik tas teises, kurios yra būtinos boto veikimui. Tai yra <code class="inline">Read & Write</code> prieiga prie <code class="inline">Orders</code>. <strong>Niekada</strong> nesuteikite lėšų išėmimo (<code class="inline">Withdraw</code>) teisių.</li>
+                <li><strong>IP Adresų Whitelisting:</strong> Bybit API nustatymuose priskirkite API raktus prie konkretaus statinio IP adreso – to serverio, kuriame veiks botas. Tai yra viena efektyviausių apsaugos priemonių, užtikrinanti, kad net nutekėjus raktams, jais negalės pasinaudoti iš kitos vietos.</li>
+                <li><strong>Aplinkos Kintamųjų Apsauga:</strong> <code class="inline">.env</code> failas su jūsų kredencialais turi būti saugomas ir niekada neįkeliamas į viešas kodo saugyklas (pvz., GitHub). Visada įtraukite <code class="inline">.env</code> į <code class="inline">.gitignore</code> failą.</li>
+                 <li><strong>Reguliari Priežiūra:</strong> Periodiškai peržiūrėkite boto log'us ir Bybit prekybos istoriją, kad įsitikintumėte, jog sistema veikia kaip tikėtasi.</li>
+            </ol>
+        </section>
+
+        <section id="conclusion">
+            <h2>7. Išvados ir Tolimesnė Plėtra</h2>
+            <p>Pristatytas Bybit prekybos botas yra galingas ir patikimas įrankis, leidžiantis efektyviai automatizuoti prekybos strategijas. "Reaktyvusis" architektūros modelis užtikrina sistemos paprastumą ir stabilumą, o integruotas rizikos valdymas leidžia kontroliuoti potencialius nuostolius.</p>
+            <h4>Potencialios Plėtros Kryptys:</h4>
+            <ul class="list-disc list-inside space-y-2">
+                <li><strong>Išplėstinė Ataskaitų Sistema:</strong> Sukurti web sąsają arba išplėsti Telegram pranešimus, kad būtų teikiama detalesnė statistika apie pelningumą, laimėtų/pralaimėtų sandorių santykį ir t.t.</li>
+                <li><strong>Kelių Take Profit Lygių Valdymas:</strong> Įdiegti logiką, leidžiančią uždaryti poziciją dalimis, pasiekus kelis skirtingus pelno tikslus (TP1, TP2, ...).</li>
+                <li><strong>Dinaminis Rizikos Valdymas:</strong> Įdiegti galimybę keisti rizikos dydį priklausomai nuo rinkos sąlygų ar sąskaitos dydžio.</li>
+                <li><strong>Klaidingų Signalų Filtravimas:</strong> Integruoti papildomus filtrus (pvz., tikrinti prekybos apimtis, volatilumą), kurie padėtų išvengti prekybos nepalankiomis rinkos sąlygomis.</li>
+            </ul>
+        </section>
+
+    </div>
+
+</body>
+</html>
