@@ -53,7 +53,7 @@ app.post('/webhook', async (req, res) => {
             throw new Error(`Apskaičiuotas kiekis (${qty}) per mažas. Minimalus: ${minOrderQty}.`);
         }
 
-        console.log('Teikiamas TESTINIS sąlyginis orderis...');
+        console.log('Teikiamas TESTINIS sąlyginis orderis (BE TP/SL)...');
         const orderResponse = await bybitClient.submitOrder({
             category: 'linear',
             symbol: ticker,
@@ -61,22 +61,22 @@ app.post('/webhook', async (req, res) => {
             orderType: 'Market',
             qty: qty,
             positionIdx: positionIdx,
-            triggerPrice: String(triggerPrice), // Kaina, kurią pasiekus įvykdomas market orderis
-            orderFilter: 'StopOrder',           // Būtent tai įjungia sąlyginį orderį
+            triggerPrice: String(triggerPrice),
+            orderFilter: 'StopOrder',
             triggerDirection: side === 'Buy' ? 'Rise' : 'Fall',
-            takeProfit: String(takeProfit),
-            stopLoss: String(stopLoss),
+            
+            // Laikinai pašaliname šiuos parametrus, kad patikrintume teoriją
+            // takeProfit: String(takeProfit),
+            // stopLoss: String(stopLoss),
         });
 
         if (orderResponse.retCode !== 0) {
             throw new Error(`Bybit klaida: ${orderResponse.retMsg}`);
         }
-
-        const msg = `✅ *TESTINIS Sąlyginis Orderis Pateiktas: ${ticker}* (${side})\n` +
+        
+        const msg = `✅ *TESTINIS Sąlyginis Orderis (be TP/SL) Pateiktas: ${ticker}* (${side})\n` +
                     `📈 Aktyvavimo kaina: ${triggerPrice}\n` +
-                    `💰 Dydis: ${qty}\n` +
-                    `🎯 TP: ${takeProfit}\n` +
-                    `🛑 SL: ${stopLoss}`;
+                    `💰 Dydis: ${qty}`;
 
         await sendTelegramMessage(msg);
         res.status(200).json({ status: 'success', response: orderResponse });
