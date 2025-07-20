@@ -70,51 +70,80 @@ app.post('/webhook', async (req, res) => {
                 
                 const sl_price = parseFloat(data.stopLoss);
                 const tp_price = parseFloat(data.takeProfit);
-
+            
+                // Pirmiausia gaukime instrumento informaciją
+                const instrumentInfo = await bybitClient.getInstrumentInfo({
+                    category: 'linear',
+                    symbol: ticker
+                });
+            
+                if (!instrumentInfo.result.list[0]) {
+                    throw new Error(`Nepavyko gauti instrumento informacijos ${ticker}.`);
+                }
+            
+                const instrument = instrumentInfo.result.list[0];
+                const minOrderQty = parseFloat(instrument.lotSizeFilter.minOrderQty);
+                const qtyStep = parseFloat(instrument.lotSizeFilter.qtyStep);
+            
+                console.log(`Instrumento info ${ticker}: minOrderQty=${minOrderQty}, qtyStep=${qtyStep}`);
+            
                 // Pozicijos dydžio skaičiavimas
                 const tickerInfo = await bybitClient.getTickers({ category: 'linear', symbol: ticker });
                 const current_price = parseFloat(tickerInfo.result.list[0].lastPrice);
-
+            
                 if (!current_price) {
                     throw new Error(`Nepavyko gauti dabartinės kainos ${ticker}.`);
                 }
-
+            
                 const sl_percent = Math.abs(current_price - sl_price) / current_price;
                 if (sl_percent === 0) {
                     throw new Error(`Signalas ${ticker} atmestas. Stop Loss negali būti lygus dabartinei kainai.`);
                 }
-
+            
                 const position_size_in_asset = FIXED_RISK_USD / (current_price * sl_percent);
-                const position_size_rounded = position_size_in_asset.toFixed(3);
-
-                if (parseFloat(position_size_rounded) <= 0) {
-                    throw new Error(`Signalas ${ticker} atmestas. Apskaičiuotas pozicijos dydis per mažas (${position_size_rounded}).`);
+                
+                // SVARBU: Suapvalinkime pagal qtyStep reikalavimus
+                const position_size_rounded = Math.floor(position_size_in_asset / qtyStep) * qtyStep;
+                const final_qty = Math.max(position_size_rounded, minOrderQty);
+                
+                // Formatuokime pagal qtyStep tikslumą
+                const decimals = qtyStep.toString().split('.')[1]?.length || 0;
+                const position_size_formatted = final_qty.toFixed(decimals);
+            
+                console.log(`Skaičiavimas ${ticker}:`);
+                console.log(`- Dabartinė kaina: ${current_price}`);
+                console.log(`- SL plotis: ${(sl_percent * 100).toFixed(2)}%`);
+                console.log(`- Apskaičiuotas dydis: ${position_size_in_asset}`);
+                console.log(`- Suapvalintas dydis: ${position_size_formatted}`);
+            
+                if (parseFloat(position_size_formatted) < minOrderQty) {
+                    throw new Error(`Signalas ${ticker} atmestas. Pozicijos dydis ${position_size_formatted} per mažas (min: ${minOrderQty}).`);
                 }
                 
-                console.log(`Ruosiamas RINKOS orderis: ${side} ${position_size_rounded} ${ticker}`);
+                console.log(`Ruosiamas RINKOS orderis: ${side} ${position_size_formatted} ${ticker}`);
                 console.log(`Parametrai: SL=${sl_price}, TP=${tp_price}`);
-
+            
                 // Orderio pateikimas
                 const orderResponse = await bybitClient.submitOrder({
                     category: 'linear',
                     symbol: ticker,
                     side: side,
                     orderType: 'Market',
-                    qty: position_size_rounded,
+                    qty: position_size_formatted,
                     positionIdx: positionIdx,
                     takeProfit: String(tp_price),
                     stopLoss: String(sl_price),
                 });
-
+            
                 if (orderResponse.retCode !== 0) {
                     throw new Error(`Bybit klaida atidarant poziciją: ${orderResponse.retMsg}`);
                 }
-
+            
                 console.log(`Pozicija ${ticker} (idx: ${positionIdx}) sėkmingai atidaryta. Order ID: ${orderResponse.result.orderId}`);
                 
                 await sendTelegramMessage(
                     `✅ *Pozicija Atidaryta: ${ticker}* (${side})\n` +
-                    `💰 Dydis: ${position_size_rounded}\n` +
+                    `💰 Dydis: ${position_size_formatted}\n` +
                     `🎯 TP: ${tp_price}\n` +
                     `🛑 SL: ${sl_price}`
                 );
