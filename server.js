@@ -63,6 +63,7 @@ app.post('/webhook', async (req, res) => {
             positionIdx: positionIdx,
             triggerPrice: String(triggerPrice), // Kaina, kurią pasiekus įvykdomas market orderis
             orderFilter: 'StopOrder',           // Būtent tai įjungia sąlyginį orderį
+            triggerDirection: side === 'Buy' ? 'Rise' : 'Fall',
             takeProfit: String(takeProfit),
             stopLoss: String(stopLoss),
         });
