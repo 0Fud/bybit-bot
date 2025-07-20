@@ -118,18 +118,22 @@ app.post('/webhook', async (req, res) => {
             }
 
             // =================================================================================
-            // VEIKSMAS 2: Atšaukti laukiantį sąlyginį orderį
+            // VEIKSMAS 2: Atšaukti laukiantį sąlyginį orderį (PATAISYTA)
             // =================================================================================
             case 'CANCEL_CONDITIONAL': {
-                const orderLinkId = data.orderLinkId; // Gausime ID iš TradingView
+                // PATAISYMAS: Sugeneruojame orderLinkId patys, o ne bandome gauti iš TradingView.
+                // Tam naudojame `ticker` ir `direction`, kuriuos webhook'as visada atsiunčia.
+                const orderLinkId = `${ticker}_${direction}_conditional`;
                 
-                console.log(`Atšaukiamas sąlyginis orderis su ID: ${orderLinkId}`);
+                console.log(`Atšaukiamas sąlyginis orderis su sugeneruotu ID: ${orderLinkId}`);
                 const cancelResponse = await bybitClient.cancelOrder({
                     category: 'linear',
                     symbol: ticker,
                     orderLinkId: orderLinkId,
                 });
 
+                // Klaidos kodas 110001 reiškia "order does not exist" - tai nėra kritinė klaida,
+                // nes orderis galėjo būti įvykdytas arba atšauktas anksčiau.
                 if (cancelResponse.retCode !== 0 && cancelResponse.retCode !== 110001) {
                     throw new Error(`Bybit klaida atšaukiant orderį (${cancelResponse.retCode}): ${cancelResponse.retMsg}`);
                 }
