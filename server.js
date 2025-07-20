@@ -24,6 +24,42 @@ const sendTelegramMessage = async (message) => {
     }
 };
 
+// DIAGNOSTIKOS ENDPOINT - patikrinti sąskaitos informaciją
+app.get('/check-account', async (req, res) => {
+    try {
+        // Patikrinti sąskaitos informaciją
+        const accountInfo = await bybitClient.getAccountInfo();
+        console.log('=== ACCOUNT INFO ===');
+        console.log(JSON.stringify(accountInfo, null, 2));
+
+        // Patikrinti pozicijų informaciją
+        const positions = await bybitClient.getPositionInfo({
+            category: 'linear',
+            symbol: 'SOLUSDT'
+        });
+        console.log('=== POSITION INFO ===');
+        console.log(JSON.stringify(positions, null, 2));
+
+        // Patikrinti instrumento informaciją
+        const instrumentInfo = await bybitClient.getInstrumentsInfo({
+            category: 'linear',
+            symbol: 'SOLUSDT'
+        });
+        console.log('=== INSTRUMENT INFO ===');
+        console.log(JSON.stringify(instrumentInfo, null, 2));
+
+        res.json({
+            account: accountInfo,
+            positions: positions,
+            instrument: instrumentInfo
+        });
+
+    } catch (error) {
+        console.error('Klaida gaunant sąskaitos informaciją:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/webhook', async (req, res) => {
     console.log('\n--- Gaunamas signalas ---');
     const data = req.body;
