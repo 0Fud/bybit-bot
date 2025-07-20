@@ -24,42 +24,6 @@ const sendTelegramMessage = async (message) => {
     }
 };
 
-// DIAGNOSTIKOS ENDPOINT - patikrinti sąskaitos informaciją
-app.get('/check-account', async (req, res) => {
-    try {
-        // Patikrinti sąskaitos informaciją
-        const accountInfo = await bybitClient.getAccountInfo();
-        console.log('=== ACCOUNT INFO ===');
-        console.log(JSON.stringify(accountInfo, null, 2));
-
-        // Patikrinti pozicijų informaciją
-        const positions = await bybitClient.getPositionInfo({
-            category: 'linear',
-            symbol: 'SOLUSDT'
-        });
-        console.log('=== POSITION INFO ===');
-        console.log(JSON.stringify(positions, null, 2));
-
-        // Patikrinti instrumento informaciją
-        const instrumentInfo = await bybitClient.getInstrumentsInfo({
-            category: 'linear',
-            symbol: 'SOLUSDT'
-        });
-        console.log('=== INSTRUMENT INFO ===');
-        console.log(JSON.stringify(instrumentInfo, null, 2));
-
-        res.json({
-            account: accountInfo,
-            positions: positions,
-            instrument: instrumentInfo
-        });
-
-    } catch (error) {
-        console.error('Klaida gaunant sąskaitos informaciją:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 app.post('/webhook', async (req, res) => {
     console.log('\n--- Gaunamas signalas ---');
     const data = req.body;
@@ -70,9 +34,9 @@ app.post('/webhook', async (req, res) => {
     }
 
     try {
-        const { ticker, side, qty, triggerPrice } = data;
+        // Paimame VISUS reikalingus duomenis, įskaitant positionIdx
+        const { ticker, side, qty, triggerPrice, positionIdx } = data;
 
-        // Pataisyta logika triggerDirection
         const order = {
             category: 'linear',
             symbol: ticker,
@@ -80,15 +44,12 @@ app.post('/webhook', async (req, res) => {
             orderType: 'Market',
             qty: String(qty),
             triggerPrice: String(triggerPrice),
-            // PATAISYTA: Buy reikia Fall (stop loss tipo), Sell reikia Rise
-            // Alternatyvus variantas su string reikšmėmis:
-            // triggerDirection: side === 'Buy' ? 'Rise' : 'Fall',
-            triggerDirection: side === 'Buy' ? 1 : 2, // 1 = Rise, 2 = Fall
+            triggerDirection: side === 'Buy' ? 1 : 2, // 1 = Kaina kyla (longui), 2 = Kaina krenta (shortui)
             stopOrderType: 'Market',
-            // Pašalintas orderFilter parametras
+            positionIdx: positionIdx, // Šis parametras yra BŪTINAS jūsų "Hedge" režimui
         };
         
-        console.log('Pateikiamas PATAISYTAS sąlyginis orderis su parametrais:', order);
+        console.log('Pateikiamas FINALINIS sąlyginis orderis su parametrais:', order);
         const orderResponse = await bybitClient.submitOrder(order);
 
         if (orderResponse.retCode !== 0) {
@@ -98,7 +59,8 @@ app.post('/webhook', async (req, res) => {
 
         const msg = `✅ *SĄLYGINIS ORDERIS SĖKMINGAI PATEIKTAS: ${ticker}*\n` +
                     `Kryptis: ${side}, Kiekis: ${qty}\n` +
-                    `Aktyvavimo kaina: ${triggerPrice}`;
+                    `Aktyvavimo kaina: ${triggerPrice}\n` +
+                    `Pozicijos ID: ${positionIdx}`;
                     
         await sendTelegramMessage(msg);
         res.status(200).json({ status: 'success', response: orderResponse.result });
@@ -110,4 +72,4 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-app.listen(port, '0.0.0.0', () => console.log(`🚀 Botas (PATAISYTA VERSIJA) veikia ant porto ${port}`));
+app.listen(port, '0.0.0.0', () => console.log(`🚀 Botas (HEDGE REŽIMO VERSIJA) veikia ant porto ${port}`));
