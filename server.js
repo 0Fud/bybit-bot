@@ -36,24 +36,28 @@ app.post('/webhook', async (req, res) => {
             category: 'linear',
             symbol: ticker,
             side: side,
-            orderType: 'Market',
+            orderType: 'Market', // Nurodo, kad kai orderis aktyvuosis, jis bus Market tipo
             qty: String(qty),
             triggerPrice: String(triggerPrice),
             triggerDirection: side === 'Buy' ? 'Rise' : 'Fall',
             orderFilter: 'StopOrder',
-            // 'positionIdx' pašalintas, nes jis skirtas tik egzistuojančioms pozicijoms
+            
+            // =================================================================
+            //  ŠI EILUTĖ IŠSPRENDŽIA PROBLEMĄ
+            //  Nurodome, kad pats sąlyginis orderis yra Market tipo.
+            // =================================================================
+            stopOrderType: 'Market',
         };
         
-        console.log('Pateikiamas sąlyginis orderis su parametrais:', order);
+        console.log('Pateikiamas TEISINGAS sąlyginis orderis su parametrais:', order);
         const orderResponse = await bybitClient.submitOrder(order);
 
         if (orderResponse.retCode !== 0) {
-            // Pateikiame detalesnę klaidą, jei tokia yra
             const errorDetails = JSON.stringify(orderResponse.retExtInfo);
             throw new Error(`Bybit klaida (${orderResponse.retCode}): ${orderResponse.retMsg}. Detalės: ${errorDetails}`);
         }
 
-        const msg = `✅ *SĄLYGINIS ORDERIS PATEIKTAS: ${ticker}*\n` +
+        const msg = `✅ *SĄLYGINIS ORDERIS SĖKMINGAI PATEIKTAS: ${ticker}*\n` +
                     `Kryptis: ${side}, Kiekis: ${qty}\n` +
                     `Aktyvavimo kaina: ${triggerPrice}`;
                     
