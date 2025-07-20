@@ -68,10 +68,6 @@ app.post('/webhook', async (req, res) => {
                 const sl_price = parseFloat(data.stopLoss);
                 const tp_price = parseFloat(data.takeProfit);
 
-                // --- PATOBULINTAS DYDŽIO SKAIČIAVIMAS IR VALIDAVIMAS ---
-
-                // 1. Gauname visą informaciją apie instrumentą (įskaitant minimalų kiekį)
-                // **PATAISYMAS**: Naudojamas teisingas funkcijos pavadinimas `getInstrumentsInfo`
                 const instrumentsInfo = await bybitClient.getInstrumentsInfo({ category: 'linear', symbol: ticker });
                 if (!instrumentsInfo.result.list || instrumentsInfo.result.list.length === 0) {
                     throw new Error(`Nepavyko gauti informacijos apie instrumentą ${ticker}.`);
@@ -81,7 +77,6 @@ app.post('/webhook', async (req, res) => {
                 const minOrderQty = parseFloat(lotSizeFilter.minOrderQty);
                 const qtyStep = parseFloat(lotSizeFilter.qtyStep);
 
-                // 2. Gauname dabartinę rinkos kainą
                 const tickerInfo = await bybitClient.getTickers({ category: 'linear', symbol: ticker });
                 const current_price = parseFloat(tickerInfo.result.list[0].lastPrice);
 
@@ -89,41 +84,26 @@ app.post('/webhook', async (req, res) => {
                     throw new Error(`Nepavyko gauti dabartinės kainos ${ticker}.`);
                 }
 
-                // 3. Apskaičiuojame SL plotį ir pozicijos dydį
                 const sl_percent = Math.abs(current_price - sl_price) / current_price;
                 if (sl_percent === 0) {
                     throw new Error(`Signalas ${ticker} atmestas. Stop Loss negali būti lygus dabartinei kainai.`);
                 }
 
                 const position_size_in_asset = FIXED_RISK_USD / (current_price * sl_percent);
-
-                // 4. Apvaliname kiekį pagal Bybit reikalaujamą žingsnį (qtyStep)
                 const precision = qtyStep.toString().split('.')[1]?.length || 0;
                 const position_size_rounded = Math.floor(position_size_in_asset / qtyStep) * qtyStep;
                 const position_size_formatted = position_size_rounded.toFixed(precision);
                 
-                console.log(`Apskaičiuoti duomenys ${ticker}:`);
-                console.log(`- Dabartinė kaina: ${current_price}`);
-                console.log(`- Neapvalintas dydis: ${position_size_in_asset}`);
-                console.log(`- Suformatuotas dydis: ${position_size_formatted}`);
-                console.log(`- Minimalus orderio dydis: ${minOrderQty}`);
-                console.log(`- Kiekio žingsnis (precision): ${qtyStep} (${precision} sk. po kablelio)`);
-
-                // 5. PATIKRINAME, AR DYDIS NĖRA PER MAŽAS
                 if (parseFloat(position_size_formatted) < minOrderQty) {
                     throw new Error(`Signalas ${ticker} atmestas. Apskaičiuotas pozicijos dydis (${position_size_formatted}) yra per mažas. Minimalus reikalaujamas kiekis: ${minOrderQty}.`);
                 }
 
-                console.log(`Ruosiamas RINKOS orderis: ${side} ${position_size_formatted} ${ticker}`);
-                console.log(`Parametrai: SL=${sl_price}, TP=${tp_price}`);
-
-                // Orderio pateikimas
                 const orderResponse = await bybitClient.submitOrder({
                     category: 'linear',
                     symbol: ticker,
                     side: side,
                     orderType: 'Market',
-                    qty: position_size_formatted, // Siunčiame kaip string
+                    qty: position_size_formatted,
                     positionIdx: positionIdx,
                     takeProfit: String(tp_price),
                     stopLoss: String(sl_price),
@@ -133,8 +113,6 @@ app.post('/webhook', async (req, res) => {
                     throw new Error(`Bybit klaida atidarant poziciją: ${orderResponse.retMsg}`);
                 }
 
-                console.log(`Pozicija ${ticker} (idx: ${positionIdx}) sėkmingai atidaryta. Order ID: ${orderResponse.result.orderId}`);
-                
                 await sendTelegramMessage(
                     `✅ *Pozicija Atidaryta: ${ticker}* (${side})\n` +
                     `💰 Dydis: ${position_size_formatted}\n` +
@@ -147,6 +125,10 @@ app.post('/webhook', async (req, res) => {
 
             case 'CLOSE_BY_AGE': {
                 console.log(`Uždaroma pozicija ${ticker} (idx: ${positionIdx}), nes baigėsi laikas (Invalidated by Age).`);
+
+                // **NAUJAS DEBUG PRANEŠIMAS**
+                // Išvedame visus galimus bybitClient metodus, kad rastume teisingą pavadinimą
+                console.log('DEBUG: Galimi bybitClient metodai:', Object.keys(bybitClient));
 
                 const positions = await bybitClient.getPositions({ category: 'linear', symbol: ticker });
                 const position = positions.result.list.find(p => p.positionIdx === positionIdx && parseFloat(p.size) > 0);
@@ -165,7 +147,7 @@ app.post('/webhook', async (req, res) => {
                     symbol: ticker,
                     side: side,
                     orderType: 'Market',
-                    qty: size,
+                    qty: String(size), // Pataisymas: dydis turi būti string
                     reduceOnly: true,
                     positionIdx: positionIdx,
                 });
@@ -193,7 +175,7 @@ app.post('/webhook', async (req, res) => {
 
 // --- SERVERIO PALEIDIMAS ---
 app.listen(port, '0.0.0.0', async () => {
-    const msg = `🚀 Bybit botas v5 (Function Fix) paleistas ir laukia signalų per http://0.0.0.0:${port}/webhook`;
+    const msg = `🚀 Bybit botas v6 (Debug Log) paleistas ir laukia signalų per http://0.0.0.0:${port}/webhook`;
     console.log(msg);
     await sendTelegramMessage(msg);
 });
