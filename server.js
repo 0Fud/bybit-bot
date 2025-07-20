@@ -30,27 +30,27 @@ app.post('/webhook', async (req, res) => {
     }
 
     try {
-        // Iš webhook'o gauname tik būtinus duomenis
-        const { ticker, side, positionIdx, qty, triggerPrice } = data;
+        const { ticker, side, qty, triggerPrice } = data;
 
-        // Formuojame orderį TIK su būtinais parametrais
         const order = {
             category: 'linear',
             symbol: ticker,
             side: side,
             orderType: 'Market',
             qty: String(qty),
-            positionIdx: positionIdx,
             triggerPrice: String(triggerPrice),
-            triggerDirection: side === 'Buy' ? 'Rise' : 'Fall', // Rise for long, Fall for short
-            orderFilter: 'StopOrder', // Nurodo, kad tai sąlyginis orderis
+            triggerDirection: side === 'Buy' ? 'Rise' : 'Fall',
+            orderFilter: 'StopOrder',
+            // 'positionIdx' pašalintas, nes jis skirtas tik egzistuojančioms pozicijoms
         };
         
         console.log('Pateikiamas sąlyginis orderis su parametrais:', order);
         const orderResponse = await bybitClient.submitOrder(order);
 
         if (orderResponse.retCode !== 0) {
-            throw new Error(`Bybit klaida (${orderResponse.retCode}): ${orderResponse.retMsg}`);
+            // Pateikiame detalesnę klaidą, jei tokia yra
+            const errorDetails = JSON.stringify(orderResponse.retExtInfo);
+            throw new Error(`Bybit klaida (${orderResponse.retCode}): ${orderResponse.retMsg}. Detalės: ${errorDetails}`);
         }
 
         const msg = `✅ *SĄLYGINIS ORDERIS PATEIKTAS: ${ticker}*\n` +
