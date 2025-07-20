@@ -105,7 +105,7 @@
 
         <header class="text-center mb-12">
             <h1 class="!mt-0 !border-none">Whitepaper: Automatizuotas Bybit Prekybos Botas</h1>
-            <p class="text-xl text-gray-400 mt-4">Versija 3.0 (Reaktyvusis Modelis)</p>
+            <p class="text-xl text-gray-400 mt-4">Versija 7.0 (Final Fix)</p>
             <p class="text-sm text-gray-500">Paskutinis atnaujinimas: 2025-07-20</p>
         </header>
 
@@ -172,7 +172,7 @@
             <p>Vienas iš kertinių sistemos elementų – griežtas rizikos valdymas. Boto kode nustatytas kintamasis <code class="inline">FIXED_RISK_USD</code> (pvz., 1.0) apibrėžia maksimalią piniginę sumą, kuria rizikuojama viename sandoryje.</p>
             <p>Pozicijos dydis apskaičiuojamas dinamiškai prieš pat orderio pateikimą pagal formulę:</p>
             <pre><code class="block">Pozicijos Dydis = Fiksuota Rizika USD / (Dabartinė Kaina × Stop Loss Plotis %)</code></pre>
-            <p>Tai užtikrina, kad nepriklausomai nuo Stop Loss atstumo nuo įėjimo kainos, potencialus nuostolis visada bus artimas nustatytai <code class="inline">FIXED_RISK_USD</code> reikšmei.</p>
+            <p>Botas taip pat automatiškai patikrina minimalų leidžiamą orderio dydį (<code class="inline">minOrderQty</code>) ir apvalina kiekį pagal Bybit reikalaujamą tikslumą (<code class="inline">qtyStep</code>), kad išvengtų "Qty invalid" klaidų.</p>
         </section>
 
         <section id="workflow">
@@ -183,8 +183,8 @@
             <ol class="list-decimal list-inside space-y-2">
                 <li>Iš TradingView gaunamas <code class="inline">POST</code> webhook'as su <code class="inline">action: "ENTER_MARKET"</code>.</li>
                 <li>Botas išanalizuoja gautus duomenis: <code class="inline">ticker</code>, <code class="inline">direction</code>, <code class="inline">stopLoss</code>, <code class="inline">takeProfit</code>.</li>
-                <li>Kreipiasi į Bybit API, kad gautų naujausią <code class="inline">ticker</code> rinkos kainą.</li>
-                <li>Apskaičiuoja pozicijos dydį pagal rizikos valdymo formulę.</li>
+                <li>Kreipiasi į Bybit API, kad gautų naujausią <code class="inline">ticker</code> rinkos kainą ir instrumento prekybos taisykles (minimalų dydį, tikslumą).</li>
+                <li>Apskaičiuoja pozicijos dydį pagal rizikos valdymo formulę ir jį suapvalina.</li>
                 <li>Pateikia Bybit vieną <code class="inline">Market Order</code>, kuriame iškart nurodo ir pozicijos dydį, ir SL/TP lygius.</li>
                 <li>Sėkmės atveju, išsiunčia patvirtinimo pranešimą į Telegram.</li>
             </ol>
@@ -291,6 +291,38 @@ PORT=3000</code></pre>
         </section>
 
     </div>
+
+    <section id="update-instructions">
+        <h2>8. Kodo Atnaujinimas ir Diegimas Serveryje</h2>
+        <h4>8.1. Kodo pakeitimų įkėlimas į GitHub</h4>
+        <ol class="list-decimal list-inside space-y-2">
+            <li>Įrašykite šias komandas savo kompiuterio terminale, kad išsaugotumėte pakeitimus ir įkeltumėte juos į GitHub:</li>
+        </ol>
+        <pre><code class="block">git add .
+git commit -m "Atnaujinti nustatymai"
+git push
+</code></pre>
+        <h4>8.2. Veiksmai Hetzner Serveryje</h4>
+        <ol class="list-decimal list-inside space-y-2">
+            <li><strong>Prisijunkite prie serverio:</strong>
+                <ul class="list-disc list-inside">
+                    <li>Savo kompiuterio terminale įveskite:</li>
+                </ul>
+                <pre><code class="block">ssh root@168.119.119.138
+</code></pre>
+            </li>
+            <li><strong>Atnaujinkite boto kodą serveryje:</strong>
+                <ul class="list-disc list-inside">
+                    <li>Kai prisijungsite, įvykdykite šias komandas po vieną:</li>
+                </ul>
+                <pre><code class="block">cd bybit-bot
+git pull
+pm2 restart bybit-bot
+</code></pre>
+                <p><strong>Pastaba:</strong> <span class="text-gray-400">Paskutinis žingsnis (pm2 restart ...) yra būtinas, kad naujausi pakeitimai pradėtų veikti.</span></p>
+            </li>
+        </ol>
+    </section>
 
 </body>
 </html>
