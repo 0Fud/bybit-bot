@@ -126,11 +126,8 @@ app.post('/webhook', async (req, res) => {
             case 'CLOSE_BY_AGE': {
                 console.log(`Uždaroma pozicija ${ticker} (idx: ${positionIdx}), nes baigėsi laikas (Invalidated by Age).`);
 
-                // **NAUJAS DEBUG PRANEŠIMAS**
-                // Išvedame visus galimus bybitClient metodus, kad rastume teisingą pavadinimą
-                console.log('DEBUG: Galimi bybitClient metodai:', Object.keys(bybitClient));
-
-                const positions = await bybitClient.getPositions({ category: 'linear', symbol: ticker });
+                // **PATAISYMAS**: Naudojamas teisingas funkcijos pavadinimas `getPositionInfo`
+                const positions = await bybitClient.getPositionInfo({ category: 'linear', symbol: ticker });
                 const position = positions.result.list.find(p => p.positionIdx === positionIdx && parseFloat(p.size) > 0);
 
                 if (!position) {
@@ -147,7 +144,7 @@ app.post('/webhook', async (req, res) => {
                     symbol: ticker,
                     side: side,
                     orderType: 'Market',
-                    qty: String(size), // Pataisymas: dydis turi būti string
+                    qty: String(size),
                     reduceOnly: true,
                     positionIdx: positionIdx,
                 });
@@ -175,7 +172,7 @@ app.post('/webhook', async (req, res) => {
 
 // --- SERVERIO PALEIDIMAS ---
 app.listen(port, '0.0.0.0', async () => {
-    const msg = `🚀 Bybit botas v6 (Debug Log) paleistas ir laukia signalų per http://0.0.0.0:${port}/webhook`;
+    const msg = `🚀 Bybit botas v7 (Final Fix) paleistas ir laukia signalų per http://0.0.0.0:${port}/webhook`;
     console.log(msg);
     await sendTelegramMessage(msg);
 });
