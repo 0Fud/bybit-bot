@@ -82,7 +82,7 @@ app.post('/webhook', async (req, res) => {
                     throw new Error(`Apskaičiuotas kiekis (${qty}) per mažas. Minimalus: ${minOrderQty}.`);
                 }
 
-                const orderLinkId = `${ticker}_${direction}_conditional_${Date.now()}`;
+                const orderLinkId = `${ticker}_${direction}_conditional`;
 
                 const order = {
                     category: 'linear',
