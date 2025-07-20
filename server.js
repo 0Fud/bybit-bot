@@ -28,7 +28,7 @@ const redisClient = createClient();
 redisClient.on('error', err => console.error('❌ Redis Client Error', err));
 
 // --- PAGALBINĖS FUNKCIJOS ---
-const FIXED_RISK_USD = 1.0; // Fiksuota rizika USD per sandorį
+const FIXED_RISK_USD = 20.0; // Fiksuota rizika USD per sandorį
 
 const sendTelegramMessage = async (message) => {
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) return;
