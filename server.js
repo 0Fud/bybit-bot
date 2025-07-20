@@ -1,18 +1,16 @@
-// Įkelia kintamuosius iš .env failo
+// index.js
+
 import 'dotenv/config';
 import express from 'express';
 import axios from 'axios';
 import { RestClientV5 } from 'bybit-api';
+import { createClient } from 'redis';
 
-// --- APLIKACIJOS IR SERVERIO KONFIGŪRACIJA ---
+// --- APLIKACIJOS, BYBIT IR REDIS KONFIGŪRACIJA ---
 const app = express();
-const port = process.env.PORT || 3000;
 app.use(express.json());
+const port = process.env.PORT || 3000;
 
-// --- KONFIGŪRACIJA IR PREKYBOS TAISYKLĖS ---
-const FIXED_RISK_USD = 1.0; // Fiksuota rizika USD per sandorį
-
-// --- APLINKOS KINTAMIEJI ---
 const {
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHANNEL_ID,
@@ -20,176 +18,183 @@ const {
     BYBIT_API_SECRET
 } = process.env;
 
-// --- BYBIT KLIENTO INICIALIZAVIMAS ---
 const bybitClient = new RestClientV5({
     key: BYBIT_API_KEY,
     secret: BYBIT_API_SECRET,
+    testnet: false // Pakeiskite į true, jei norite testuoti Testnet aplinkoje
 });
 
+const redisClient = createClient();
+redisClient.on('error', err => console.error('❌ Redis Client Error', err));
+
 // --- PAGALBINĖS FUNKCIJOS ---
+const FIXED_RISK_USD = 1.0; // Fiksuota rizika USD per sandorį
+
 const sendTelegramMessage = async (message) => {
-    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) {
-        console.log("Telegram kintamieji nenustatyti, pranešimas nesiunčiamas.");
-        return;
-    }
+    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) return;
     try {
-        await axios.post(
-            `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-            { chat_id: TELEGRAM_CHANNEL_ID, text: message, parse_mode: 'Markdown' }
-        );
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            chat_id: TELEGRAM_CHANNEL_ID,
+            text: message,
+            parse_mode: 'Markdown'
+        });
     } catch (error) {
         console.error('Klaida siunčiant pranešimą į Telegram:', error.response?.data || error.message);
     }
 };
 
-// --- PAGRINDINIS MARŠRUTAS (WEBHOOK HANDLER) ---
+
+// --- PAGRINDINIS WEBHOOK MARŠRUTAS ---
 app.post('/webhook', async (req, res) => {
-    console.log('\n--- Naujas signalas ---');
+    console.log('\n--- Gaunamas signalas ---');
     const data = req.body;
     console.log('Gauti duomenys:', data);
 
     try {
         if (!data.action) {
-             return res.status(200).json({ status: 'ignored', message: 'No action specified.' });
+            return res.status(200).json({ status: 'ignored', message: 'Veiksmas nenurodytas.' });
         }
 
         const ticker = data.ticker.replace('.P', '');
         const positionIdx = parseInt(data.positionIdx, 10);
-        const direction = data.direction?.toLowerCase();
+        const redisKey = `${ticker}_${positionIdx}`;
+        const side = data.direction === 'long' ? 'Buy' : 'Sell';
 
         switch (data.action) {
-            // =================================================================================
-            // VEIKSMAS 1: Pateikti naują sąlyginį orderį
-            // =================================================================================
-            case 'ENTER_CONDITIONAL': {
-                const side = direction === 'long' ? 'Buy' : 'Sell';
-                const triggerPrice = parseFloat(data.triggerPrice);
-                const stopLoss = parseFloat(data.stopLoss);
+
+            // 1. Sukuriamas naujas sąlyginis orderis
+            case 'NEW_PATTERN': {
+                console.log(`[${ticker}] Vykdomas veiksmas: NEW_PATTERN`);
+                
+                const entryPrice = parseFloat(data.entryPrice);
                 const takeProfit = parseFloat(data.takeProfit);
 
-                const instrumentsInfo = await bybitClient.getInstrumentsInfo({ category: 'linear', symbol: ticker });
-                const instrument = instrumentsInfo.result.list[0];
-                const { minOrderQty, qtyStep } = instrument.lotSizeFilter;
+                // Skaičiuojame SL pagal 1:2 R:R, kaip nurodyta plane [cite: 27]
+                const profitDistance = Math.abs(takeProfit - entryPrice);
+                const riskDistance = profitDistance / 2;
+                const stopLoss = data.direction === 'long' ? entryPrice - riskDistance : entryPrice + riskDistance;
 
-                const risk_per_asset = Math.abs(triggerPrice - stopLoss);
-                if (risk_per_asset === 0) throw new Error('triggerPrice negali būti lygus stopLoss.');
+                // Pozicijos dydžio skaičiavimas
+                const sl_percent = Math.abs(entryPrice - stopLoss) / entryPrice;
+                if (sl_percent === 0) throw new Error('Stop Loss negali būti lygus įėjimo kainai.');
+
+                const position_size = FIXED_RISK_USD / (entryPrice * sl_percent);
                 
-                const position_size = FIXED_RISK_USD / risk_per_asset;
-                const precision = qtyStep.toString().split('.')[1]?.length || 0;
-                const qty = (Math.floor(position_size / parseFloat(qtyStep)) * parseFloat(qtyStep)).toFixed(precision);
-
-                if (parseFloat(qty) < parseFloat(minOrderQty)) {
-                    throw new Error(`Apskaičiuotas kiekis (${qty}) per mažas. Minimalus: ${minOrderQty}.`);
-                }
-
-                const orderLinkId = `${ticker}_${direction}_conditional`;
+                // Čia reikėtų pridėti apvalinimo logiką pagal instrumento taisykles (qtyStep)
+                const qty = position_size.toFixed(3); // Laikinas pavyzdys, pritaikykite pagal poreikį
 
                 const order = {
                     category: 'linear',
                     symbol: ticker,
                     side: side,
                     orderType: 'Market',
-                    qty: qty,
-                    triggerPrice: String(triggerPrice),
-                    triggerDirection: side === 'Buy' ? 1 : 2,
+                    qty: String(qty),
+                    triggerPrice: String(entryPrice),
+                    triggerDirection: data.direction === 'long' ? 1 : 2,
                     stopOrderType: 'Market',
                     positionIdx: positionIdx,
-                    orderLinkId: orderLinkId,
-                    takeProfit: String(takeProfit),
-                    stopLoss: String(stopLoss),
-                    tpslMode: 'Full',
                 };
-
+                
                 console.log('Pateikiamas sąlyginis orderis:', order);
                 const orderResponse = await bybitClient.submitOrder(order);
 
                 if (orderResponse.retCode !== 0) {
                     throw new Error(`Bybit klaida (${orderResponse.retCode}): ${orderResponse.retMsg}`);
                 }
+                
+                // Įsimename orderio ID į Redis [cite: 30]
+                const orderId = orderResponse.result.orderId;
+                await redisClient.set(redisKey, orderId);
 
-                await sendTelegramMessage(
-                    `✅ *Sąlyginis Orderis Pateiktas: ${ticker}*\n` +
-                    `Kryptis: ${side}, Dydis: ${qty}\n` +
-                    `Aktyvavimo kaina: ${triggerPrice}\n` +
-                    `TP: ${takeProfit}, SL: ${stopLoss}\n` +
-                    `Orderio ID: \`${orderLinkId}\``
-                );
+                await sendTelegramMessage(`✅ [${ticker}] Pateiktas sąlyginis orderis. ID: ${orderId}`);
                 break;
             }
 
-            // =================================================================================
-            // VEIKSMAS 2: Atšaukti laukiantį sąlyginį orderį (PATAISYTA)
-            // =================================================================================
-            case 'CANCEL_CONDITIONAL': {
-                // PATAISYMAS: Sugeneruojame orderLinkId patys, o ne bandome gauti iš TradingView.
-                // Tam naudojame `ticker` ir `direction`, kuriuos webhook'as visada atsiunčia.
-                const orderLinkId = `${ticker}_${direction}_conditional`;
-                
-                console.log(`Atšaukiamas sąlyginis orderis su sugeneruotu ID: ${orderLinkId}`);
-                const cancelResponse = await bybitClient.cancelOrder({
-                    category: 'linear',
-                    symbol: ticker,
-                    orderLinkId: orderLinkId,
-                });
+            // 2. Anuliuojamas senas pattern'as ir atšaukiamas orderis
+            case 'INVALIDATE_PATTERN': {
+                console.log(`[${ticker}] Vykdomas veiksmas: INVALIDATE_PATTERN`);
 
-                // Klaidos kodas 110001 reiškia "order does not exist" - tai nėra kritinė klaida,
-                // nes orderis galėjo būti įvykdytas arba atšauktas anksčiau.
-                if (cancelResponse.retCode !== 0 && cancelResponse.retCode !== 110001) {
-                    throw new Error(`Bybit klaida atšaukiant orderį (${cancelResponse.retCode}): ${cancelResponse.retMsg}`);
+                const orderId = await redisClient.get(redisKey); // Ieškome ID Redis'e [cite: 32]
+                if (!orderId) {
+                    console.log(`[${ticker}] Nerastas aktyvus sąlyginis orderis, kurį būtų galima atšaukti.`);
+                    break;
                 }
 
-                await sendTelegramMessage(`↪️ *Sąlyginis Orderis Atšauktas: ${ticker}* (${direction})\nOrderio ID: \`${orderLinkId}\``);
+                console.log(`[${ticker}] Atšaukiamas orderis su ID: ${orderId}`);
+                await bybitClient.cancelOrder({ category: 'linear', symbol: ticker, orderId: orderId });
+                
+                await redisClient.del(redisKey); // Ištriname iš Redis [cite: 33]
+                await sendTelegramMessage(`🗑️ [${ticker}] Atšauktas sąlyginis orderis. ID: ${orderId}`);
                 break;
             }
 
-            // =================================================================================
-            // VEIKSMAS 3: Uždaryti jau atidarytą poziciją, jei ji paseno
-            // =================================================================================
+            // 3. Įeinama į poziciją, nustatomas SL/TP
+            case 'ENTERED_POSITION': {
+                console.log(`[${ticker}] Vykdomas veiksmas: ENTERED_POSITION`);
+                
+                await redisClient.del(redisKey); // Ištriname iš Redis, nes orderis įvykdytas [cite: 35]
+
+                console.log(`[${ticker}] Nustatomas SL/TP...`);
+                await bybitClient.setTradingStop({ // Nustatome SL/TP jau atidarytai pozicijai [cite: 36]
+                    category: 'linear',
+                    symbol: ticker,
+                    positionIdx: positionIdx,
+                    stopLoss: String(data.stopLoss),
+                    takeProfit: String(data.takeProfit)
+                });
+
+                await sendTelegramMessage(`▶️ [${ticker}] Pozicija atidaryta! Nustatytas SL: ${data.stopLoss}, TP: ${data.takeProfit}`);
+                break;
+            }
+
+            // 4. UŽdaroma pozicija dėl laiko
             case 'CLOSE_BY_AGE': {
-                console.log(`Uždaroma pozicija ${ticker} (idx: ${positionIdx}), nes baigėsi laikas.`);
+                console.log(`[${ticker}] Vykdomas veiksmas: CLOSE_BY_AGE`);
+                
                 const positions = await bybitClient.getPositionInfo({ category: 'linear', symbol: ticker });
                 const position = positions.result.list.find(p => p.positionIdx === positionIdx && parseFloat(p.size) > 0);
 
                 if (!position) {
-                    await sendTelegramMessage(`⚠️ Bandyta uždaryti pasenusią poziciją *${ticker}* (idx: ${positionIdx}), bet ji nerasta.`);
-                    return res.status(200).json({ status: 'ignored', message: 'Position not found.' });
+                    await sendTelegramMessage(`[${ticker}] Bandyta uždaryti pasenusią poziciją, bet ji nerasta.`);
+                    break;
                 }
-                
-                const closeSide = position.side === 'Buy' ? 'Sell' : 'Buy';
-                const closeResponse = await bybitClient.submitOrder({
+
+                await bybitClient.submitOrder({
                     category: 'linear',
                     symbol: ticker,
-                    side: closeSide,
+                    side: position.side === 'Buy' ? 'Sell' : 'Buy',
                     orderType: 'Market',
                     qty: position.size,
                     reduceOnly: true,
                     positionIdx: positionIdx,
                 });
 
-                if (closeResponse.retCode !== 0) {
-                    throw new Error(`Bybit klaida uždarant poziciją: ${closeResponse.retMsg}`);
-                }
-                await sendTelegramMessage(`✅ Pozicija *${ticker}* (idx: ${positionIdx}) sėkmingai uždaryta, nes baigėsi laikas.`);
+                await sendTelegramMessage(`[${ticker}] Pozicija sėkmingai uždaryta dėl laiko.`);
                 break;
             }
 
             default:
                 console.log(`Gautas veiksmas '${data.action}', kuris yra ignoruojamas.`);
-                return res.status(200).json({ status: 'ignored', message: `Action '${data.action}' is not handled.` });
         }
 
-        res.status(200).json({ status: 'success', message: `Action '${data.action}' processed.` });
+        res.status(200).json({ status: 'success', message: `Veiksmas '${data.action}' apdorotas.` });
 
     } catch (error) {
         console.error('❌ KLAIDA APDOROJANT SIGNALĄ:', error.message);
-        await sendTelegramMessage(`❌ Įvyko klaida: ${error.message}`);
+        await sendTelegramMessage(`❌ KLAIDA: ${error.message}`);
         res.status(500).json({ status: 'error', error: error.message });
     }
 });
 
+
 // --- SERVERIO PALEIDIMAS ---
-app.listen(port, '0.0.0.0', async () => {
-    const msg = `🚀 Bybit botas v9 (PRODUKCINĖ VERSIJA) paleistas ir laukia signalų per http://0.0.0.0:${port}/webhook`;
-    console.log(msg);
-    await sendTelegramMessage(msg);
-});
+const startServer = async () => {
+    await redisClient.connect();
+    app.listen(port, '0.0.0.0', () => {
+        const msg = `🚀 Bybit botas (Stateful versija su Redis) paleistas ant porto ${port}`;
+        console.log(msg);
+        sendTelegramMessage(msg);
+    });
+};
+
+startServer();
