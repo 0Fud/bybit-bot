@@ -1,4 +1,4 @@
-// index.js (v4.0 - Versija su Google Sheets prekybos žurnalu)
+// index.js (v4.1 - Versija su pataisytais Telegram pranešimais)
 
 import 'dotenv/config';
 import express from 'express';
@@ -80,10 +80,6 @@ const sendTelegramMessage = async (message) => {
 
 // --- GOOGLE SHEETS INTEGRACIJA ---
 
-/**
- * Prisijungia prie Google Sheets API ir grąžina autentifikuotą klientą.
- * @returns {Promise<object>} Google Sheets API klientas.
- */
 async function getSheetsClient() {
     const auth = new google.auth.GoogleAuth({
         keyFile: GOOGLE_CREDENTIALS_PATH,
@@ -93,16 +89,12 @@ async function getSheetsClient() {
     return google.sheets({ version: 'v4', auth: authClient });
 }
 
-/**
- * Įrašo naują eilutę į Google Sheets dokumentą.
- * @param {Array<string>} rowData - Duomenų masyvas, kurį reikia įrašyti.
- */
 async function appendToSheet(rowData) {
     try {
         const sheets = await getSheetsClient();
         await sheets.spreadsheets.values.append({
             spreadsheetId: GOOGLE_SHEET_ID,
-            range: 'Sheet1!A1', // Rašys į pirmą tuščią eilutę
+            range: 'Sheet1!A1',
             valueInputOption: 'USER_ENTERED',
             resource: {
                 values: [rowData],
@@ -162,19 +154,37 @@ app.post('/webhook', async (req, res) => {
 
                 if (orderResponse.retCode === 0) {
                     const orderId = orderResponse.result.orderId;
-                    // Išsaugome visą sandorio kontekstą Redis'e
                     const tradeContext = {
                         orderId, ticker, direction: data.direction,
                         entryPrice: order.triggerPrice, stopLoss: formatByStep(stopLoss, instrument.tickSize),
                         takeProfit: formatByStep(takeProfit, instrument.tickSize),
-                        patternName: data.patternName || 'Nenurodyta', // Svarbu!
+                        patternName: data.patternName || 'Nenurodyta',
                     };
                     await redisClient.set(redisKey, JSON.stringify(tradeContext));
                     
-                    // ... (pranešimo siuntimas į Telegram, kaip ir anksčiau) ...
+                    // <<<< PATAISYTA DALIS PRADŽIA >>>>
+                    const positionValueUSD = parseFloat(qty) * entryPrice;
+                    const successMessage = `✅ *Pateiktas Sąlyginis Orderis*\n\n` +
+                                           `*Pora:* \`${ticker}\`\n` +
+                                           `*Kryptis:* ${data.direction.toUpperCase()}\n` +
+                                           `*Pattern:* \`${tradeContext.patternName}\`\n` +
+                                           `*Rizika:* $${parseFloat(FIXED_RISK_USD).toFixed(2)}\n\n` +
+                                           `*Įėjimas:* \`${tradeContext.entryPrice}\`\n` +
+                                           `*Stop Loss:* \`${tradeContext.stopLoss}\`\n` +
+                                           `*Take Profit:* \`${tradeContext.takeProfit}\`\n\n` +
+                                           `*Dydis:* \`${qty} ${ticker.replace('USDT', '')}\` (~$${positionValueUSD.toFixed(2)})\n` +
+                                           `*Orderio ID:* \`${orderId}\``;
+                    await sendTelegramMessage(successMessage);
+                    // <<<< PATAISYTA DALIS PABAIGA >>>>
 
                 } else {
-                    // ... (klaidos pranešimo siuntimas, kaip ir anksčiau) ...
+                    const errorMessage = `❌ *Orderis ATMestas*\n\n` +
+                                         `*Pora:* \`${ticker}\`\n` +
+                                         `*Kryptis:* ${data.direction.toUpperCase()}\n` +
+                                         `*Bandytas Dydis:* \`${qty}\`\n\n` +
+                                         `*Bybit Klaida (${orderResponse.retCode}):*\n` +
+                                         `\`${orderResponse.retMsg}\``;
+                    await sendTelegramMessage(errorMessage);
                     throw new Error(`Bybit klaida: ${orderResponse.retMsg}`);
                 }
                 break;
@@ -195,22 +205,17 @@ app.post('/webhook', async (req, res) => {
                 
                 let pnlPercent = ((closePrice - entryPrice) / entryPrice) * 100;
                 if (tradeContext.direction === 'short') {
-                    pnlPercent = -pnlPercent; // Apverčiame P/L short pozicijai
+                    pnlPercent = -pnlPercent;
                 }
 
                 const rowData = [
-                    new Date().toISOString(),        // Data
-                    tradeContext.ticker,             // Pora
-                    tradeContext.direction.toUpperCase(), // Kryptis
-                    tradeContext.patternName,        // Pattern Pavadinimas
-                    data.outcome,                    // Statusas (SL_HIT, TP1_HIT)
-                    tradeContext.entryPrice,         // Įėjimo Kaina
-                    data.closePrice,                 // Uždarymo Kaina
-                    pnlPercent.toFixed(2) + '%',     // P/L (%)
+                    new Date().toISOString(), tradeContext.ticker, tradeContext.direction.toUpperCase(),
+                    tradeContext.patternName, data.outcome, tradeContext.entryPrice,
+                    data.closePrice, pnlPercent.toFixed(2) + '%',
                 ];
 
                 await appendToSheet(rowData);
-                await redisClient.del(redisKey); // Išvalome įrašą iš Redis
+                await redisClient.del(redisKey);
 
                 await sendTelegramMessage(`📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
                                           `*Pora:* \`${tradeContext.ticker}\`\n` +
@@ -219,7 +224,10 @@ app.post('/webhook', async (req, res) => {
                 break;
             }
 
-            // ... (kiti 'case' blokai: INVALIDATE_PATTERN, ENTERED_POSITION, etc. lieka nepakitę) ...
+            // Čia turėtų būti kiti jūsų 'case' blokai: INVALIDATE_PATTERN, ENTERED_POSITION ir t.t.
+            // Jie lieka nepakitę, todėl dėl trumpumo čia neįtraukti.
+            // Įsitikinkite, kad jie yra jūsų galutiniame faile.
+
         }
         res.status(200).json({ status: 'success' });
     } catch (error) {
@@ -230,23 +238,16 @@ app.post('/webhook', async (req, res) => {
 });
 
 
-// --- SERVERIO PALEIDIMAS IR LAIKO PLANUOKLIS ---
+// --- SERVERIO PALEIDIMAS ---
 const startServer = async () => {
     try {
         await redisClient.connect();
         console.log("✅ Sėkmingai prisijungta prie Redis.");
         app.listen(port, '0.0.0.0', () => {
-            const msg = `🚀 Bybit botas (v4.0 su Google Sheets) paleistas ant porto ${port}`;
+            const msg = `🚀 Bybit botas (v4.1 su Sheets ir pranešimais) paleistas ant porto ${port}`;
             console.log(msg);
             sendTelegramMessage(msg);
         });
-
-        // Savaitės ataskaitos suplanavimas (kol kas tuščias, įgyvendinsime vėliau)
-        // cron.schedule('0 21 * * 0', () => { // Kiekvieną sekmadienį 21:00
-        //     console.log('Generuojama savaitės ataskaita...');
-        //     // Čia bus ataskaitos generavimo logika
-        // });
-
     } catch (err) {
         console.error("❌ Kritinė klaida paleidžiant serverį:", err);
         process.exit(1);
