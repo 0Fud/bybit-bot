@@ -1,492 +1,483 @@
 <!DOCTYPE html>
-<html lang="lt">
+<html lang="lt" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Techninė Specifikacija: Automatizuota Prekybos Sistema v2.0</title>
+    <title>Automatizuotos Prekybos Sistemos Dokumentacija v5.4</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827; /* gray-900 */
-            color: #D1D5DB; /* gray-300 */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #030712; 
+            color: #D1D5DB;
         }
-        .container {
-            max-width: 1024px;
-            margin: 0 auto;
-            padding: 2rem;
+        .container { 
+            max-width: 1280px; 
+            margin: 0 auto; 
         }
-        h1, h2, h3, h4 {
-            color: #F9FAFB; /* gray-50 */
-            border-bottom: 1px solid #374151; /* gray-700 */
-            padding-bottom: 0.5rem;
-            margin-top: 2.5rem;
-            margin-bottom: 1.5rem;
+        h1, h2, h3, h4 { 
+            color: #F9FAFB; 
+            font-weight: 700;
+            letter-spacing: -0.025em;
         }
-        h1 { font-size: 2.5rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.025em; }
-        h2 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 600; }
-        h3 { font-size: 1.5rem; line-height: 2rem; font-weight: 600; }
-        h4 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; border-bottom: none; }
-        code.inline {
-            font-family: 'Roboto Mono', monospace;
-            background-color: #374151; /* gray-700 */
-            color: #FBBF24; /* amber-400 */
-            padding: 0.15rem 0.4rem;
-            border-radius: 0.25rem;
+        h1 { font-size: 2.5rem; line-height: 1.2; border-bottom: 1px solid #374151; padding-bottom: 1rem; margin-bottom: 2rem; }
+        h2 { font-size: 1.875rem; line-height: 2.25rem; border-bottom: 1px solid #374151; padding-bottom: 0.75rem; margin-top: 3rem; margin-bottom: 1.5rem; }
+        h3 { font-size: 1.5rem; line-height: 2rem; margin-top: 2.5rem; margin-bottom: 1rem; }
+        h4 { font-size: 1.25rem; line-height: 1.75rem; color: #9CA3AF; margin-top: 2rem; margin-bottom: 0.75rem; }
+        code.inline { 
+            font-family: 'Roboto Mono', monospace; 
+            background-color: #374151; 
+            color: #FBBF24; 
+            padding: 0.2rem 0.4rem; 
+            border-radius: 0.25rem; 
             font-size: 0.9em;
         }
-        pre {
-            background-color: #1F2937; /* gray-800 */
-            border: 1px solid #4B5563; /* gray-600 */
-            border-radius: 0.5rem;
-            padding: 1.25rem;
-            overflow-x: auto;
-            margin-top: 1rem;
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
+        pre { 
+            background-color: #1F2937; 
+            border: 1px solid #4B5563; 
+            border-radius: 0.5rem; 
+            padding: 1.25rem; 
+            overflow-x: auto; 
+            margin-top: 1rem; 
+            margin-bottom: 1.5rem; 
+            font-size: 0.9rem; 
+            position: relative; 
         }
-        code.block {
-            font-family: 'Roboto Mono', monospace;
-            color: #E5E7EB; /* gray-200 */
+        code.block { 
+            font-family: 'Roboto Mono', monospace; 
+            color: #E5E7EB; 
         }
-        p, ul, ol {
-            line-height: 1.75;
+        p, ul, ol { 
+            line-height: 1.75; 
             margin-bottom: 1.25rem;
+            color: #9CA3AF;
         }
-        a {
-            color: #60A5FA; /* blue-400 */
-            text-decoration: none;
-            font-weight: 500;
+        a { 
+            color: #60A5FA; 
+            text-decoration: none; 
+            font-weight: 500; 
         }
-        a:hover {
-            text-decoration: underline;
+        a:hover { text-decoration: underline; }
+        .abstract, .note { 
+            background-color: #111827; 
+            border-left: 4px solid #3B82F6; 
+            padding: 1.5rem; 
+            border-radius: 0.5rem; 
+            margin-bottom: 2rem; 
         }
-        .badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-weight: 600;
-            font-size: 0.8rem;
-            vertical-align: middle;
+        .note { border-left-color: #FBBF24; }
+        .copy-btn { 
+            position: absolute; 
+            top: 0.75rem; 
+            right: 0.75rem; 
+            background-color: #374151; 
+            color: #D1D5DB; 
+            border: none; 
+            padding: 0.35rem 0.75rem; 
+            border-radius: 0.25rem; 
+            font-size: 0.8rem; 
+            cursor: pointer; 
+            transition: all 0.2s;
+            opacity: 0.7;
         }
-        .badge-blue { background-color: #1E40AF; color: #BFDBFE; }
-        .badge-green { background-color: #065F46; color: #A7F3D0; }
-        .badge-red { background-color: #991B1B; color: #FECACA; }
-        .badge-yellow { background-color: #92400E; color: #FDE68A; }
-        .abstract {
-            background-color: #1F2937;
-            border-left: 4px solid #3B82F6;
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            margin-bottom: 2rem;
+        .copy-btn:hover { 
+            background-color: #4B5563;
+            opacity: 1;
         }
-        .toc ul {
-            list-style-type: none;
-            padding-left: 0;
+        .copy-btn.copied {
+            background-color: #10B981;
+            color: white;
         }
-        .toc ul li a {
-            display: block;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid #374151;
+        .toc a {
             transition: all 0.2s ease-in-out;
+            padding: 0.5rem 0.25rem;
+            display: block;
         }
-        .toc ul li a:hover {
+        .toc a:hover {
             background-color: #1F2937;
             padding-left: 1rem;
             text-decoration: none;
         }
-        .step-list {
-            list-style: none;
-            padding-left: 0;
-        }
-        .step-list li {
-            position: relative;
-            padding-left: 2rem;
-            margin-bottom: 1rem;
-        }
-        .step-list li::before {
-            content: "✓";
-            position: absolute;
-            left: 0;
-            top: 4px;
-            color: #34D399; /* green-400 */
-            font-weight: bold;
-            font-size: 1.2rem;
-        }
     </style>
 </head>
-<body>
+<body class="bg-gray-950">
 
-    <div class="container">
-
-        <header class="text-center mb-12">
-            <h1 class="!mt-0 !border-none">Techninė Specifikacija: Automatizuota Prekybos Sistema</h1>
-            <p class="text-xl text-gray-400 mt-4">Versija 2.0 (Stateful)</p>
-            <p class="text-sm text-gray-500">Paskutinis atnaujinimas: 2025-07-20</p>
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-16">
+            <h1 class="!border-none">Automatizuotos Prekybos Sistemos Dokumentacija</h1>
+            <p class="text-2xl text-gray-400 mt-4">Versija 5.4 (Pagal <code class="inline">server.js</code> v4.4)</p>
+            <p class="text-sm text-gray-500 mt-2">Paskutinis atnaujinimas: 2025-07-23</p>
         </header>
 
-        <div class="abstract">
-            <h3 class="!mt-0 !border-none">Santrauka (Abstract)</h3>
-            <p class="mb-0">Šis dokumentas detaliai aprašo "Stateful" (turinčios atmintį) automatizuotos prekybos sistemos architektūrą, logiką ir diegimo procesą. Sistema yra sukurta veikti kaip tarpininkas tarp **TradingView platformoje veikiančio techninės analizės indikatoriaus** ir **Bybit kriptovaliutų biržos**. Skirtingai nuo "stateless" sistemų, kurios reaguoja į rinkos įvykius realiu laiku, ši sistema valdo visą prekybos ciklą: pateikia sąlyginius (angl. *conditional*) orderius, juos seka, atšaukia pagal poreikį arba valdo jau atidarytas pozicijas. Būsenos valdymui naudojama Redis "in-memory" duomenų bazė, užtikrinanti sistemos patikimumą ir atsparumą perkrovimams.</p>
-        </div>
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Šoninė Navigacija -->
+            <aside class="lg:w-1/4 sticky top-8 self-start">
+                <nav class="toc bg-gray-900 p-6 rounded-lg border border-gray-700">
+                    <h3 class="!mt-0 !text-xl">Turinys</h3>
+                    <h4 class="!text-sm uppercase tracking-wider text-gray-500 !mt-4">Whitepaper</h4>
+                    <ul class="text-gray-300 space-y-1">
+                        <li><a href="#architecture">Architektūra</a></li>
+                        <li><a href="#lifecycle">Prekybos Ciklas</a></li>
+                        <li><a href="#datamodel">Duomenų Modelis</a></li>
+                    </ul>
+                    <h4 class="!text-sm uppercase tracking-wider text-gray-500 !mt-6">Vartotojo Vadovas</h4>
+                    <ul class="text-gray-300 space-y-1">
+                        <li><a href="#env-setup">Konfigūracija (.env)</a></li>
+                        <li><a href="#tv-setup">TradingView Alertai</a></li>
+                        <li><a href="#server-management">Serverio Valdymas</a></li>
+                        <li><a href="#quick-update">Greitas Atnaujinimas</a></li>
+                        <li><a href="#troubleshooting">Diagnostika</a></li>
+                    </ul>
+                </nav>
+            </aside>
 
-        <nav class="toc mb-12">
-            <h2 class="!mt-0">Turinys</h2>
-            <ul>
-                <li><a href="#introduction">1. Įvadas</a></li>
-                <li><a href="#architecture">2. Sistemos Architektūra</a></li>
-                <li><a href="#redis">3. Būsenos Valdymas su Redis</a></li>
-                <li><a href="#workflow">4. Alerto ir Boto Sąveikos Ciklas</a></li>
-                <li><a href="#risk">5. Rizikos ir Pozicijos Dydžio Valdymas</a></li>
-                <li><a href="#tv-config">6. TradingView Konfigūracija (Kritiškai Svarbu)</a></li>
-                <li><a href="#deployment">7. Diegimas ir Paleidimas</a></li>
-                <li><a href="#security">8. Saugumo Rekomendacijos</a></li>
-            </ul>
-        </nav>
-        
-        <section id="introduction">
-            <h2>1. Įvadas</h2>
-            <h4>1.1. Problematika</h4>
-            <p>Automatizuojant prekybos strategijas, pagrįstas TradingView indikatoriais, susiduriama su iššūkiu: kaip patikimai valdyti prekybos idėjas, kurios nėra įvykdomos iškart? Indikatorius gali identifikuoti potencialų prekybos scenarijų (angl. *pattern*), kurio įėjimo taškas yra ateityje. Būtina sistema, kuri sugebėtų priimti signalą apie potencialų sandorį, pateikti sąlyginį orderį biržoje, "atsiminti" šį orderį, atšaukti jį, jei indikatorius anuliuoja pradinį scenarijų, ir teisingai valdyti poziciją, kai sąlyginis orderis yra įvykdomas.</p>
-            
-            <h4>1.2. Sprendimas: "Stateful" Architektūra</h4>
-            <p>Ši sistema įgyvendina "stateful" architektūrą. Jos branduolys – Node.js aplikacija, kuri naudoja Redis duomenų bazę kaip savo trumpalaikę "atmintį" aktyviems, bet dar neįvykdytiems, sąlyginiams orderiams sekti. Tai leidžia botui priimti sprendimus, paremtus ne tik dabartiniu signalu, bet ir praeities veiksmais.</p>
+            <!-- Pagrindinis Turinys -->
+            <main class="lg:w-3/4">
+                <div class="abstract">
+                    <h3 class="!mt-0 !border-none text-white">Santrauka</h3>
+                    <p class="mb-0">Šis dokumentas yra išsamus gidas, aprašantis automatizuotos prekybos sistemos, integruotos su Bybit birža, architektūrą, funkcionalumą ir naudojimo instrukcijas. Sistema veikia kaip tarpininkas tarp TradingView ir Bybit, vykdydama prekybos signalus, valdydama sandorių būseną per Redis ir automatiškai kaupdama išsamią prekybos istoriją Google Sheets dokumente. Tai leidžia atlikti giluminę prekybos rezultatų analizę ir priimti duomenimis pagrįstus sprendimus.</p>
+                </div>
 
-            <h4>1.3. Skirtumas: Indikatorius vs. Strategija</h4>
-            <p>Sistema yra valdoma **TradingView Indikatoriaus**, o ne *Strategijos*. Tai esminis skirtumas. Mūsų sistema remiasi būtent **indikatoriaus `alert()` įvykiais**, kurie per webhook'us siunčia JSON formato komandas botui.</p>
-        </section>
+                <section id="whitepaper">
+                    <h1>I Dalis: Techninė Dokumentacija (Whitepaper)</h1>
+                    
+                    <article id="architecture">
+                        <h2>1. Sistemos Architektūra</h2>
+                        <p>Sistemos branduolys – Node.js aplikacija, kuri priima HTTP POST užklausas (webhook) iš TradingView. Ji naudoja Redis laikinai sandorių būsenos saugyklai ir komunikuoja su išorinėmis API: Bybit (orderių valdymui), Google Sheets (duomenų kaupimui) ir Telegram (pranešimams).</p>
+                        <pre><code class="block">
+  TradingView                           Node.js Serveris (Jūsų botas)                                Išorinės Paslaugos
+┌─────────────┐                       ┌──────────────────────────────────────────────────┐          ┌───────────────────┐
+│             │   POST /webhook       │                                                  │          │       Bybit       │
+│ Indikatorius├──────────────────────>│ Express.js Web Serveris                          ├─────────>│ (Orderių Vykdymas)│
+│             │   (JSON Payload)      │   (Priima ir apdoroja signalus)                  │<─────────┤                   │
+└─────────────┘                       │                                                  │   API    └───────────────────┘
+                                      │                                                  │
+                                      │ ┌──────────────────┐      ┌────────────────────┐ │          ┌───────────────────┐
+                                      │ │                  │      │                    │ │          │   Google Sheets   │
+                                      │ │  Redis Klientas  ├──────┤  Būsenos Valdymas  ├──────────>│ (Prekybos Žurnalas) │
+                                      │ │ (Laikina atmintis)│<─────┤ (Trade Lifecycle)  │ │   API    └───────────────────┘
+                                      │ └──────────────────┘      └────────────────────┘ │
+                                      │                                                  │          ┌───────────────────┐
+                                      │ ┌──────────────────┐                             │          │      Telegram     │
+                                      │ │  Telegram Modulis├───────────────────────────────────────>│   (Pranešimai)    │
+                                      │ │  (axios klientas)│                             │   API    └───────────────────┘
+                                      │ └──────────────────┘                             │
+                                      └──────────────────────────────────────────────────┘
+                        </code></pre>
+                    </article>
+                    
+                    <article id="lifecycle">
+                        <h2>2. Prekybos Ciklo Logika (v4.4)</h2>
+                        <p>Sistema yra "stateful" (turinti atmintį), kas reiškia, kad ji seka kiekvieno sandorio būseną nuo pradžios iki pabaigos. Kiekvienas signalas iš TradingView yra unikali komanda, kuri keičia sandorio būseną.</p>
+                        <ol class="list-decimal list-inside space-y-6">
+                            <li>
+                                <strong>Signalas <code class="inline">NEW_PATTERN</code> (Naujas sandoris)</strong>
+                                <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-gray-400">
+                                    <li>Gaunamas signalas su pora, kryptimi, įėjimo kaina ir pattern'o pavadinimu.</li>
+                                    <li><strong class="text-amber-300">Automatiškai apskaičiuojamas Stop Loss:</strong> 50% atstumo nuo įėjimo kainos iki pirmo Take Profit tikslo.</li>
+                                    <li>Apskaičiuojamas pozicijos dydis pagal <code class="inline">FIXED_RISK_USD</code> ir dinamiškai gautas poros taisykles (žingsnis, min. kiekis).</li>
+                                    <li><strong class="text-amber-300">Patikrinamas minimalus kiekis:</strong> Jei apskaičiuotas dydis mažesnis už Bybit leidžiamą minimumą, sandoris atmetamas ir išsiunčiamas informacinis pranešimas.</li>
+                                    <li>Pateikiamas sąlyginis ("trigger") rinkos orderis į Bybit.</li>
+                                    <li>Sėkmės atveju, visas sandorio kontekstas (kainos, dydis, pattern'as, orderio ID) įrašomas į Redis su raktu <code class="inline">{ticker}_{positionIdx}</code>.</li>
+                                    <li>Išsiunčiamas detalus pranešimas į Telegram su visa sandorio informacija.</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Signalas <code class="inline">ENTERED_POSITION</code> (Pozicija atidaryta)</strong>
+                                <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-gray-400">
+                                    <li>Gaunamas signalas, kai sąlyginis orderis suveikia ir pozicija atidaroma.</li>
+                                    <li>Pateikiamas <code class="inline">setTradingStop</code> API kvietimas į Bybit, kuris nustato Stop Loss ir Take Profit jau atidarytai pozicijai pagal iš anksto apskaičiuotas reikšmes.</li>
+                                    <li><strong class="text-amber-300">Kritinės klaidos valdymas:</strong> Jei SL/TP nustatyti nepavyksta, į Telegram išsiunčiamas kritinis perspėjimas, reikalaujantis rankinio įsikišimo.</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Signalas <code class="inline">TRADE_CLOSED</code> (Sandoris uždarytas)</strong>
+                                <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-gray-400">
+                                    <li>Gaunamas signalas, kai pozicija uždaroma (dėl SL, TP).</li>
+                                    <li>Nuskaitomas sandorio kontekstas iš Redis. Jei nerandamas, signalas ignoruojamas.</li>
+                                    <li>Apskaičiuojamas P/L procentais.</li>
+                                    <li>Suformuojama nauja eilutė su visais sandorio duomenimis ir per Google Sheets API įrašoma į prekybos žurnalą.</li>
+                                    <li>Ištrinamas įrašas iš Redis, taip užbaigiant sandorio ciklą.</li>
+                                </ul>
+                            </li>
+                             <li>
+                                <strong>Signalas <code class="inline">INVALIDATE_PATTERN</code> (Sandoris atšauktas)</strong>
+                                <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-gray-400">
+                                    <li>Gaunamas signalas, jei pattern'as tampa nebeaktualus prieš suveikiant orderiui.</li>
+                                    <li>Nuskaitomas sandorio kontekstas iš Redis, gaunamas <code class="inline">orderId</code>.</li>
+                                    <li>Pateikiamas <code class="inline">cancelOrder</code> API kvietimas į Bybit, atšaukiantis sąlyginį orderį.</li>
+                                    <li>Ištrinamas įrašas iš Redis.</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong class="text-green-400">NAUJA: Signalas <code class="inline">CLOSE_BY_AGE</code> (Uždarymas pagal laiką)</strong>
+                                <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-gray-400">
+                                    <li>Gaunamas signalas, nurodantis uždaryti poziciją, nes ji buvo aktyvi per ilgai.</li>
+                                    <li>Botas patikrina esamą pozicijos dydį Bybit biržoje.</li>
+                                    <li>Pateikiamas rinkos orderis uždaryti visą likusią poziciją.</li>
+                                    <li>Po kelių sekundžių (kad spėtų įvykti sandoris), botas paima naujausią rinkos kainą kaip apytikslę uždarymo kainą.</li>
+                                    <li>Sandoris įrašomas į Google Sheets su rezultatu <code class="inline">CLOSED_BY_AGE</code> ir ištrinamas iš Redis.</li>
+                                </ul>
+                            </li>
+                        </ol>
+                    </article>
 
-        <section id="architecture">
-            <h2>2. Sistemos Architektūra</h2>
-            <img src="https://placehold.co/1200/1F2937/E5E7EB?text=TradingView%20(Indikatorius)%20%E2%86%92%20Webhook%20%E2%86%92%20Node.js%20Botas%20(Logika%20%2B%20Redis)%20%E2%86%92%20Bybit%20API%20(Vykdymas)" alt="Architektūros diagrama" class="rounded-lg mb-4 w-full">
-            
-            <h4>2.1. Komponentai</h4>
-            <ul class="list-disc list-inside space-y-2">
-                <li><strong>TradingView:</strong> Signalų generavimo šaltinis. Indikatorius identifikuoja prekybos scenarijus ir, per sukonfigūruotus alert'us, siunčia HTTPS POST užklausas (webhook) į boto serverį.</li>
-                <li><strong>Node.js Botas:</strong> Sistemos "smegenys". Tai Express.js aplikacija, kuri priima webhook'us, analizuoja JSON komandas, atlieka skaičiavimus ir bendrauja su Bybit bei Redis.</li>
-                <li><strong>Redis Serveris:</strong> Boto "atmintis". Laiko informaciją apie aktyvius sąlyginius orderius.</li>
-                <li><strong>Bybit Birža:</strong> Vykdymo platforma, kurioje realiai pateikiami ir atšaukiami orderiai bei atidaromos pozicijos.</li>
-                <li><strong>Hetzner Serveris:</strong> Visa infrastruktūra (Node.js botas, Redis) veikia virtualiame privačiame serveryje (VPS), kurį teikia Hetzner.</li>
-            </ul>
-
-            <h4>2.2. Technologijų Rinkinys (Stack)</h4>
-            <ul class="list-disc list-inside space-y-2">
-                <li><strong>Runtime:</strong> <code class="inline">Node.js (v18+)</code></li>
-                <li><strong>Web Serveris:</strong> <code class="inline">Express.js</code></li>
-                <li><strong>Būsenos Saugykla:</strong> <code class="inline">Redis</code></li>
-                <li><strong>Proceso Valdymas:</strong> <code class="inline">PM2</code></li>
-                <li><strong>Bybit API Klientas:</strong> <code class="inline">bybit-api (v5)</code></li>
-                <li><strong>Redis Klientas:</strong> <code class="inline">node-redis</code></li>
-                <li><strong>Pranešimai:</strong> <code class="inline">Telegram API</code> per <code class="inline">axios</code></li>
-                <li><strong>Aplinkos Kintamieji:</strong> <code class="inline">dotenv</code></li>
-            </ul>
-        </section>
-        
-        <section id="redis">
-            <h2>3. Būsenos Valdymas su Redis</h2>
-            <p>Redis yra esminis komponentas, paverčiantis botą iš "stateless" į "stateful". Jis naudojamas kaip greita ir patvari raktų-reikšmių saugykla.</p>
-            <h4>3.1. Rakto Struktūra</h4>
-            <p>Kiekvienas sąlyginis orderis Redis duomenų bazėje yra saugomas naudojant unikalų raktą. Raktas yra sugeneruojamas pagal formulę:</p>
-            <pre><code class="block">Raktas = "{ticker}_{positionIdx}"</code></pre>
-            <p>Pavyzdžiai:</p>
-            <ul class="list-disc list-inside">
-                <li><code class="inline">SOLUSDT_1</code> (Long pozicijai ant SOLUSDT)</li>
-                <li><code class="inline">ETHUSDT_2</code> (Short pozicijai ant ETHUSDT)</li>
-            </ul>
-            <p>Rakto reikšmė (value) yra iš Bybit gautas <code class="inline">orderId</code> (pvz., <code class="inline">"a1b2c3d4-..."</code>).</p>
-        </section>
-
-        <section id="workflow">
-            <h2>4. Alerto ir Boto Sąveikos Ciklas</h2>
-            <p class="mb-6">Štai kaip kiekvienas TradingView alert'as veikia kaip komanda botui, valdydamas visą prekybos ciklo eigą.</p>
-
-            <div class="mb-12 p-6 bg-gray-800/50 rounded-lg border border-gray-700">
-                <h3 class="!mt-0 !border-b-2 !border-green-500 pb-3 mb-4">1. Alertas: NEW_PATTERN (Naujas Scenarijus)</h3>
-                <p><strong>Kada suveikia?</strong> Kai jūsų TradingView indikatorius identifikuoja naują, potencialią prekybos galimybę, kurios įėjimo kaina (<code class="inline">entryPrice</code>) dar nėra pasiekta.</p>
-                
-                <h4 class="!mt-6">Siunčiamas JSON (pvz., Long):</h4>
-                <pre><code class="block">{
-  "action": "NEW_PATTERN",
-  "ticker": "BTCUSDT",
-  "direction": "long",
-  "positionIdx": 1,
-  "entryPrice": "125000",
-  "takeProfit": "130000"
+                    <article id="datamodel">
+                        <h2>3. Duomenų Modelis</h2>
+                        <p>Sistemoje naudojami du pagrindiniai duomenų modeliai: laikinasis Redis objekte ir ilgalaikis Google Sheets eilutėje.</p>
+                        
+                        <h4>3.1. Redis Duomenų Objektas</h4>
+                        <p>Laikinas objektas, saugomas Redis'e viso sandorio ciklo metu. Raktas: <code class="inline">{ticker}_{positionIdx}</code>.</p>
+                        <pre><code class="block">{
+  "orderId": "1a2b3c-4d5e-...", // Bybit pateikto orderio ID
+  "ticker": "BTCUSDT",         // Prekybos pora
+  "direction": "long",         // Sandorio kryptis
+  "entryPrice": "70000.50",    // Sąlyginio orderio kaina
+  "stopLoss": "69500.00",      // Apskaičiuota SL kaina
+  "takeProfit": "71001.50",    // Apskaičiuota TP kaina
+  "patternName": "Bullish Engulfing" // Iš TV gautas pattern'o pavadinimas
 }</code></pre>
 
-                <h4 class="!mt-6">Boto Reakcija (žingsnis po žingsnio):</h4>
-                <ol class="step-list">
-                    <li><strong>Analizė:</strong> Botas gauna signalą ir išanalizuoja <code class="inline">entryPrice</code> bei <code class="inline">takeProfit</code> reikšmes.</li>
-                    <li><strong>Rizikos Skaičiavimas:</strong> Pagal 1:2 rizikos/pelno santykį apskaičiuojama Stop Loss kaina.</li>
-                    <li><strong>Dydžio Skaičiavimas:</strong> Pagal nustatytą <code class="inline">FIXED_RISK_USD</code> ir atstumą iki Stop Loss, apskaičiuojamas pozicijos dydis (pvz., 0.005 BTC).</li>
-                    <li><strong>Orderio Pateikimas:</strong> Per Bybit API pateikiamas Sąlyginis Rinkos Orderis (Conditional Market Order), nurodant aktyvavimo kainą (<code class="inline">triggerPrice</code>).</li>
-                    <li><strong>Įsiminimas:</strong> Jei Bybit patvirtina orderio priėmimą, botas gauna unikalų <code class="inline">orderId</code>. Šį <code class="inline">orderId</code> jis įrašo į Redis duomenų bazę, naudodamas raktą (pvz., <code class="inline">BTCUSDT_1</code>).</li>
-                    <li><strong>Pranešimas:</strong> Į Telegram išsiunčiamas patvirtinimas apie sėkmingai pateiktą sąlyginį orderį.</li>
-                </ol>
-            </div>
+                        <h4>3.2. Google Sheets Eilutės Struktūra</h4>
+                        <p>Galutinis įrašas prekybos žurnale, sukuriamas po <code class="inline">TRADE_CLOSED</code> arba <code class="inline">CLOSE_BY_AGE</code> signalo.</p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm text-gray-300 bg-gray-900 rounded-lg">
+                                <thead class="bg-gray-800 text-xs text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="px-4 py-3">Stulpelis A (Data)</th>
+                                        <th class="px-4 py-3">Stulpelis B (Pora)</th>
+                                        <th class="px-4 py-3">Stulpelis C (Kryptis)</th>
+                                        <th class="px-4 py-3">Stulpelis D (Pattern)</th>
+                                        <th class="px-4 py-3">Stulpelis E (Rezultatas)</th>
+                                        <th class="px-4 py-3">Stulpelis F (Įėjimas)</th>
+                                        <th class="px-4 py-3">Stulpelis G (Uždarymas)</th>
+                                        <th class="px-4 py-3">Stulpelis H (P/L %)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="border-t border-gray-700">
+                                        <td class="px-4 py-3 font-mono">2025-07-23T12:30:00Z</td>
+                                        <td class="px-4 py-3 font-mono">BTCUSDT</td>
+                                        <td class="px-4 py-3 font-mono">LONG</td>
+                                        <td class="px-4 py-3 font-mono">Bullish Engulfing</td>
+                                        <td class="px-4 py-3 font-mono text-green-400">TP1_HIT</td>
+                                        <td class="px-4 py-3 font-mono">70000.50</td>
+                                        <td class="px-4 py-3 font-mono">71001.50</td>
+                                        <td class="px-4 py-3 font-mono text-green-400">+1.43%</td>
+                                    </tr>
+                                    <tr class="border-t border-gray-700">
+                                        <td class="px-4 py-3 font-mono">2025-07-23T14:45:00Z</td>
+                                        <td class="px-4 py-3 font-mono">ETHUSDT</td>
+                                        <td class="px-4 py-3 font-mono">SHORT</td>
+                                        <td class="px-4 py-3 font-mono">Bearish Bat</td>
+                                        <td class="px-4 py-3 font-mono text-yellow-400">CLOSED_BY_AGE</td>
+                                        <td class="px-4 py-3 font-mono">3500.00</td>
+                                        <td class="px-4 py-3 font-mono">3510.50</td>
+                                        <td class="px-4 py-3 font-mono text-red-400">-0.30%</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </article>
+                </section>
 
-            <div class="mb-12 p-6 bg-gray-800/50 rounded-lg border border-gray-700">
-                <h3 class="!mt-0 !border-b-2 !border-red-500 pb-3 mb-4">2. Alertas: INVALIDATE_PATTERN (Anuliuotas Scenarijus)</h3>
-                <p><strong>Kada suveikia?</strong> Kai indikatorius nusprendžia, kad anksčiau rastas scenarijus nebeatitinka sąlygų (pvz., kaina per daug nutolo, pasikeitė rinkos struktūra).</p>
+                <section id="user-guide">
+                    <h1>II Dalis: Vartotojo Vadovas</h1>
 
-                <h4 class="!mt-6">Siunčiamas JSON:</h4>
-                <pre><code class="block">{
-  "action": "INVALIDATE_PATTERN",
-  "ticker": "BTCUSDT",
-  "positionIdx": 1
-}</code></pre>
+                    <article id="env-setup">
+                        <h2>4. Konfigūracijos Failas (<code class="inline">.env</code>)</h2>
+                        <p>Tai yra svarbiausias konfigūracijos failas, kuriame saugomi visi jūsų API raktai ir nustatymai. Jį rasite pagrindinėje boto direktorijoje (<code class="inline">/root/bybit-bot/.env</code>).</p>
+                    </article>
 
-                <h4 class="!mt-6">Boto Reakcija (žingsnis po žingsnio):</h4>
-                <ol class="step-list">
-                    <li><strong>Rakto Sudarymas:</strong> Botas iš gautų <code class="inline">ticker</code> ir <code class="inline">positionIdx</code> sukonstruoja Redis raktą (pvz., <code class="inline">BTCUSDT_1</code>).</li>
-                    <li><strong>Paieška "Atmintyje":</strong> Kreipiasi į Redis ir pagal raktą bando gauti išsaugotą <code class="inline">orderId</code>.</li>
-                    <li><strong>Atšaukimas:</strong> Jei <code class="inline">orderId</code> randamas, botas per Bybit API išsiunčia komandą atšaukti būtent tą sąlyginį orderį.</li>
-                    <li><strong>"Pamiršimas":</strong> Sėkmingai atšaukus orderį, botas ištrina įrašą (raktą ir reikšmę) iš Redis, taip "pamiršdamas" apie šį nebeaktualų orderį.</li>
-                    <li><strong>Pranešimas:</strong> Į Telegram išsiunčiamas patvirtinimas apie atšauktą orderį.</li>
-                </ol>
-            </div>
-
-            <div class="mb-12 p-6 bg-gray-800/50 rounded-lg border border-gray-700">
-                <h3 class="!mt-0 !border-b-2 !border-blue-500 pb-3 mb-4">3. Alertas: ENTERED_POSITION (Pozicija Atidaryta)</h3>
-                <p><strong>Kada suveikia?</strong> Kai kaina pasiekia sąlyginio orderio aktyvavimo lygį ir Bybit įvykdo orderį, atidarydamas realią poziciją.</p>
-
-                <h4 class="!mt-6">Siunčiamas JSON:</h4>
-                <pre><code class="block">{
-  "action": "ENTERED_POSITION",
-  "ticker": "BTCUSDT",
-  "positionIdx": 1,
-  "stopLoss": "122500",
-  "takeProfit": "130000"
-}</code></pre>
-
-                <h4 class="!mt-6">Boto Reakcija (žingsnis po žingsnio):</h4>
-                <ol class="step-list">
-                    <li><strong>"Pamiršimas":</strong> Botas supranta, kad sąlyginis orderis virto pozicija, todėl ištrina atitinkamą įrašą iš Redis.</li>
-                    <li><strong>SL/TP Nustatymas:</strong> Botas nedelsiant per Bybit API išsiunčia komandą <code class="inline">setTradingStop</code>, kad ką tik atidarytai pozicijai priskirtų tikslius Stop Loss ir Take Profit lygius, gautus su šiuo alertu.</li>
-                    <li><strong>Pranešimas:</strong> Į Telegram išsiunčiama žinutė, kad pozicija atidaryta ir apsaugota SL/TP.</li>
-                </ol>
-            </div>
-
-            <div class="p-6 bg-gray-800/50 rounded-lg border border-gray-700">
-                <h3 class="!mt-0 !border-b-2 !border-yellow-500 pb-3 mb-4">4. Alertas: CLOSE_BY_AGE (Uždarymas Dėl Laiko)</h3>
-                <p><strong>Kada suveikia?</strong> Kai indikatorius nusprendžia, kad aktyvi pozicija per ilgai neužsidaro (nepasiekia nei SL, nei TP) ir ją reikia uždaryti priverstinai.</p>
-
-                <h4 class="!mt-6">Siunčiamas JSON:</h4>
-                <pre><code class="block">{
-  "action": "CLOSE_BY_AGE",
-  "ticker": "BTCUSDT",
-  "positionIdx": 1
-}</code></pre>
-
-                <h4 class="!mt-6">Boto Reakcija (žingsnis po žingsnio):</h4>
-                <ol class="step-list">
-                    <li><strong>Pozicijos Tikrinimas:</strong> Botas per Bybit API patikrina, ar nurodytai porai ir pozicijos indeksui egzistuoja aktyvi pozicija.</li>
-                    <li><strong>Uždarymo Orderis:</strong> Jei pozicija randama, botas suformuoja priešingos krypties Rinkos Orderį (Market Order) su <code class="inline">reduceOnly: true</code> vėliavėle. Tai užtikrina, kad bus uždaryta tik esama pozicija, o ne atidaryta nauja.</li>
-                    <li><strong>Pranešimas:</strong> Į Telegram išsiunčiamas patvirtinimas apie sėkmingai uždarytą poziciją.</li>
-                </ol>
-            </div>
-        </section>
-        
-        <section id="risk">
-            <h2>5. Rizikos ir Pozicijos Dydžio Valdymas</h2>
-            <p>Sistema naudoja griežtą rizikos valdymą, paremtą fiksuota pinigine rizika vienam sandoriui.</p>
-            <p>1. Boto kode nustatytas kintamasis <code class="inline">FIXED_RISK_USD</code> (pvz., 1.0).</p>
-            <p>2. Stop Loss kaina apskaičiuojama pagal 1:2 R:R santykį:</p>
-            <pre><code class="block">Rizikos Atstumas = |Take Profit Kaina - Įėjimo Kaina| / 2
-Stop Loss Kaina (Long) = Įėjimo Kaina - Rizikos Atstumas
-Stop Loss Kaina (Short) = Įėjimo Kaina + Rizikos Atstumas</code></pre>
-            <p>3. Pozicijos dydis apskaičiuojamas pagal formulę:</p>
-            <pre><code class="block">Pozicijos Dydis = Fiksuota Rizika USD / |Įėjimo Kaina - Stop Loss Kaina|</code></pre>
-            <p><strong>Svarbu:</strong> Boto kode turi būti įdiegta logika, kuri patikrintų, ar apskaičiuotas dydis nėra mažesnis už biržos minimalų leidžiamą kiekį (<code class="inline">minOrderQty</code>), ir signalą atmestų, jei yra.</p>
-        </section>
-
-        <section id="tv-config">
-            <h2>6. TradingView Konfigūracija (Kritiškai Svarbu)</h2>
-            <p>Būtina sukurti atskirus alert'us kiekvienam indikatoriaus trigeriui. Webhook URL turi būti nurodytas jūsų serverio adresas, pvz., <code class="inline">http://168.119.119.138:3000/webhook</code>.</p>
-            <p>Į kiekvieno alert'o "Message" laukelį turi būti įklijuojamas atitinkamas JSON kodas.</p>
-
-            <div class="mb-8 p-4 bg-yellow-900/60 rounded border border-yellow-700">
-                <strong>Pataisytos JSON Konfigūracijos Jūsų Indikatoriui</strong>
-                <p class="mt-2 mb-0 text-yellow-200">Šiuos atnaujintus JSON blokus naudokite vietoje tų, kurie buvo pateikti ankstesnėse instrukcijose. Įklijuokite juos į atitinkamus TradingView alertų laukelius.</p>
-            </div>
-
-            <h4 class="!mt-8">NEW_PATTERN (Long)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-long')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-long" class="overflow-x-auto"><code class="block">{
+                    <article id="tv-setup">
+                        <h2>5. TradingView Alertų Konfigūracija (Harmonic Patterns Pro)</h2>
+                        <p>Kad sistema veiktų teisingai, būtina tiksliai sukonfigūruoti "Harmonic Patterns Pro" indikatoriaus alertus. Kiekvienam alertui į "Message" laukelį reikia įklijuoti atitinkamą JSON kodą. <strong class="text-white">Būtina sukurti atskiras versijas `Long` ir `Short` pozicijoms.</strong></p>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                            <!-- NEW PATTERN -->
+                            <div class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                                <h4 class="!mt-0">1. Naujas Sandoris (Sąlyginis Orderis)</h4>
+                                <p class="text-xs text-gray-400 mb-4">Indikatoriaus alert'as: "New Pattern Found"</p>
+                                <p class="text-sm font-semibold text-green-400">LONG versija (<code class="inline">positionIdx: 1</code>)</p>
+                                <pre><code class="block">{
   "action": "NEW_PATTERN",
   "ticker": "{{ticker}}",
   "direction": "long",
   "positionIdx": 1,
   "entryPrice": "{{entry}}",
-  "takeProfit": "{{target1}}"
-}</code></pre>
-            </div>
-
-            <h4>NEW_PATTERN (Short)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-short')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-short" class="overflow-x-auto"><code class="block">{
+  "takeProfit": "{{target1}}",
+  "patternName": "{{pattern}}"
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                                <p class="text-sm font-semibold text-red-400 mt-4">SHORT versija (<code class="inline">positionIdx: 2</code>)</p>
+                                <pre><code class="block">{
   "action": "NEW_PATTERN",
   "ticker": "{{ticker}}",
   "direction": "short",
   "positionIdx": 2,
   "entryPrice": "{{entry}}",
-  "takeProfit": "{{target1}}"
-}</code></pre>
-            </div>
+  "takeProfit": "{{target1}}",
+  "patternName": "{{pattern}}"
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                            </div>
 
-            <h4>INVALIDATE_PATTERN (Long)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-invalidate-long')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-invalidate-long" class="overflow-x-auto"><code class="block">{
-  "action": "INVALIDATE_PATTERN",
-  "ticker": "{{ticker}}",
-  "positionIdx": 1
-}</code></pre>
-            </div>
-
-            <h4>INVALIDATE_PATTERN (Short)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-invalidate-short')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-invalidate-short" class="overflow-x-auto"><code class="block">{
-  "action": "INVALIDATE_PATTERN",
-  "ticker": "{{ticker}}",
-  "positionIdx": 2
-}</code></pre>
-            </div>
-
-            <h4>ENTERED_POSITION (Long)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-entered-long')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-entered-long" class="overflow-x-auto"><code class="block">{
+                            <!-- ENTERED POSITION -->
+                            <div class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                                <h4 class="!mt-0">2. Pozicijos Apsauga (SL/TP Nustatymas)</h4>
+                                <p class="text-xs text-gray-400 mb-4">Indikatoriaus alert'as: "Entered Position"</p>
+                                <p class="text-sm font-semibold text-green-400">LONG versija (<code class="inline">positionIdx: 1</code>)</p>
+                                <pre><code class="block">{
   "action": "ENTERED_POSITION",
   "ticker": "{{ticker}}",
   "positionIdx": 1,
   "stopLoss": "{{stoploss}}",
   "takeProfit": "{{target1}}"
-}</code></pre>
-            </div>
-
-            <h4>ENTERED_POSITION (Short)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-entered-short')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-entered-short" class="overflow-x-auto"><code class="block">{
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                                <p class="text-sm font-semibold text-red-400 mt-4">SHORT versija (<code class="inline">positionIdx: 2</code>)</p>
+                                <pre><code class="block">{
   "action": "ENTERED_POSITION",
   "ticker": "{{ticker}}",
   "positionIdx": 2,
   "stopLoss": "{{stoploss}}",
   "takeProfit": "{{target1}}"
-}</code></pre>
-            </div>
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                            </div>
+                            
+                            <!-- TRADE CLOSED -->
+                            <div class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                                <h4 class="!mt-0">3. Sandorio Uždarymas (Pelnas/Nuostolis)</h4>
+                                <p class="text-xs text-gray-400 mb-4">Indikatoriaus alert'ai: "Stop-loss" / "Reached Target 1"</p>
+                                <p class="text-sm font-semibold text-green-400">LONG versija (<code class="inline">positionIdx: 1</code>)</p>
+                                <pre><code class="block">{
+  "action": "TRADE_CLOSED",
+  "ticker": "{{ticker}}",
+  "positionIdx": 1,
+  "outcome": "TP1_HIT",
+  "closePrice": "{{close}}"
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                                <p class="text-sm font-semibold text-red-400 mt-4">SHORT versija (<code class="inline">positionIdx: 2</code>)</p>
+                                <pre><code class="block">{
+  "action": "TRADE_CLOSED",
+  "ticker": "{{ticker}}",
+  "positionIdx": 2,
+  "outcome": "SL_HIT",
+  "closePrice": "{{close}}"
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                            </div>
+                            
+                            <!-- INVALIDATE PATTERN -->
+                            <div class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                                <h4 class="!mt-0">4. Sąlyginio Orderio Atšaukimas</h4>
+                                <p class="text-xs text-gray-400 mb-4">Indikatoriaus alert'as: "Invalidated Pattern"</p>
+                                <p class="text-sm font-semibold text-green-400">LONG versija (<code class="inline">positionIdx: 1</code>)</p>
+                                <pre><code class="block">{
+  "action": "INVALIDATE_PATTERN",
+  "ticker": "{{ticker}}",
+  "positionIdx": 1
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                                <p class="text-sm font-semibold text-red-400 mt-4">SHORT versija (<code class="inline">positionIdx: 2</code>)</p>
+                                <pre><code class="block">{
+  "action": "INVALIDATE_PATTERN",
+  "ticker": "{{ticker}}",
+  "positionIdx": 2
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                            </div>
 
-            <h4>CLOSE_BY_AGE (Long)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-close-long')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-close-long" class="overflow-x-auto"><code class="block">{
+                            <!-- CLOSE_BY_AGE -->
+                            <div class="bg-gray-900 p-4 rounded-lg border-2 border-green-500 md:col-span-2">
+                                <h4 class="!mt-0 text-green-400">5. NAUJIENA: Pozicijos Uždarymas Dėl Laiko</h4>
+                                <p class="text-xs text-gray-400 mb-4">Indikatoriaus alert'as: "Pattern Invalidated by Age"</p>
+                                <p class="text-sm font-semibold text-green-400">LONG versija (<code class="inline">positionIdx: 1</code>)</p>
+                                <pre><code class="block">{
   "action": "CLOSE_BY_AGE",
   "ticker": "{{ticker}}",
   "positionIdx": 1
-}</code></pre>
-            </div>
-
-            <h4>CLOSE_BY_AGE (Short)</h4>
-            <div class="relative mb-4">
-                <button onclick="copyToClipboard('json-close-short')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre id="json-close-short" class="overflow-x-auto"><code class="block">{
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                                <p class="text-sm font-semibold text-red-400 mt-4">SHORT versija (<code class="inline">positionIdx: 2</code>)</p>
+                                <pre><code class="block">{
   "action": "CLOSE_BY_AGE",
   "ticker": "{{ticker}}",
   "positionIdx": 2
-}</code></pre>
-            </div>
-        </section>
+}</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                            </div>
+                        </div>
+                    </article>
 
-        <section id="deployment">
-            <h2>7. Diegimas ir Paleidimas</h2>
-            <h4>7.1. Serverio Paruošimas (Hetzner VPS)</h4>
-            <ol class="list-decimal list-inside space-y-2">
-                <li>Įdiegti Node.js, npm ir Git.</li>
-                <li>Įdiegti Redis: <code class="inline">sudo apt update && sudo apt install redis-server</code></li>
-                <li>Įdiegti PM2 globaliai: <code class="inline">sudo npm install pm2 -g</code></li>
-            </ol>
-            
-            <h4>7.2. Boto Konfigūracija</h4>
-            <ol class="list-decimal list-inside space-y-2">
-                <li>Klonuoti projekto repozitoriją: <code class="inline">git clone [jūsų repozitorijos URL]</code></li>
-                <li>Nueiti į projekto direktoriją: <code class="inline">cd [projekto pavadinimas]</code></li>
-                <li>Įdiegti priklausomybes: <code class="inline">npm install</code></li>
-                <li>Sukurti <code class="inline">.env</code> failą ir užpildyti jį reikiamais raktais:</li>
-            </ol>
-            <pre><code class="block">BYBIT_API_KEY=JUSU_BYBIT_API_RAKTAS
-BYBIT_API_SECRET=JUSU_BYBIT_API_SLAPUKAS
-TELEGRAM_BOT_TOKEN=JUSU_TELEGRAM_BOTO_TOKENAS
-TELEGRAM_CHANNEL_ID=JUSU_TELEGRAM_KANALO_ID
-PORT=3000</code></pre>
-            
-            <h4>7.3. Paleidimas su PM2</h4>
-            <ol class="list-decimal list-inside space-y-2">
-                <li>Paleisti botą: <code class="inline">pm2 start index.js --name bybit-bot</code></li>
-                <li>Išsaugoti procesų sąrašą, kad botas pasileistų automatiškai po serverio perkrovimo: <code class="inline">pm2 save</code></li>
-                <li>Peržiūrėti log'us: <code class="inline">pm2 logs bybit-bot</code></li>
-            </ol>
-        </section>
+                    <article id="server-management">
+                        <h2>6. Serverio Valdymas (Komandos)</h2>
+                        <p>Šiame skyriuje pateikiamos pagrindinės komandos boto valdymui serveryje. Visos jos vykdomos prisijungus per SSH.</p>
+                        <h4>"Švarus" perkrovimas</h4>
+                        <p>Būtinas po <code class="inline">.env</code> failo pakeitimų arba įdiegus naujas bibliotekas su <code class="inline">npm install</code>.</p>
+                        <pre><code class="block">pm2 delete bybit-bot && pm2 start server.js --name bybit-bot && pm2 save</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                    </article>
+                    
+                    <article id="quick-update">
+                        <h2>7. Greitas Kodo Atnaujinimas (Copy & Paste)</h2>
+                        <p>Ši sekcija skirta greitam kodo atnaujinimui. Tiesiog nukopijuokite ir įklijuokite komandas atitinkamoje aplinkoje.</p>
+                        
+                        <h4>7.1. Jūsų kompiuteryje: Pakeitimų įkėlimas į GitHub</h4>
+                        <pre><code class="block">git add .
+git commit -m "Kodo atnaujinimas"
+git push</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                        
+                        <h4>7.2. Prisijungimas prie serverio</h4>
+                        <pre><code class="block">ssh root@168.119.119.138</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                        
+                        <h4>7.3. Serveryje: Pakeitimų pritaikymas</h4>
+                        <pre><code class="block">cd /root/bybit-bot && git pull && pm2 restart bybit-bot</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                    </article>
 
-        <section id="security">
-            <h2>8. Saugumo Rekomendacijos</h2>
-            <ol class="list-decimal list-inside space-y-3">
-                <li><strong>Minimalių Teisių Principas:</strong> Bybit API raktams suteikite tik <code class="inline">Read & Write</code> prieigą prie <code class="inline">Orders</code> ir <code class="inline">Positions</code>. **Niekada** nesuteikite lėšų išėmimo (<code class="inline">Withdraw</code>) teisių.</li>
-                <li><strong>IP Adresų Whitelisting:</strong> Bybit API nustatymuose priskirkite API raktus prie konkretaus statinio IP adreso – jūsų Hetzner serverio IP.</li>
-                <li><strong>Aplinkos Kintamųjų Apsauga:</strong> <code class="inline">.env</code> failas turi būti įtrauktas į <code class="inline">.gitignore</code> ir niekada nekeliamas į viešas kodo saugyklas.</li>
-            </ol>
-        </section>
-
-        <section id="update-instructions" class="mt-16">
-            <h2>9. Greitas Kodo Atnaujinimas (Copy & Paste)</h2>
-            <h4>9.1. Visi GitHub veiksmai vienu paspaudimu</h4>
-            <div class="relative mb-6">
-                <button onclick="navigator.clipboard.writeText('git add .\ngit commit -m \"Atnaujinti nustatymai\"\ngit push')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre class="overflow-x-auto"><code class="block">git add .
-git commit -m "Atnaujinti nustatymai"
-git push</code></pre>
-            </div>
-            <h4>9.2. Prisijungimas prie Hetzner serverio (atskirai)</h4>
-            <div class="relative mb-6">
-                <button onclick="navigator.clipboard.writeText('ssh root@168.119.119.138')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre class="overflow-x-auto"><code class="block">ssh root@168.119.119.138</code></pre>
-            </div>
-            <h4>9.3. Komandos serveryje po prisijungimo</h4>
-            <div class="relative mb-6">
-                <button onclick="navigator.clipboard.writeText('cd bybit-bot\ngit pull\npm2 restart bybit-bot')" class="absolute top-2 right-2 bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-800 text-sm">Kopijuoti</button>
-                <pre class="overflow-x-auto"><code class="block">cd bybit-bot
-git pull
-pm2 restart bybit-bot</code></pre>
-            </div>
-            <p class="text-gray-400 text-sm">Pastaba: <span class="text-white">Kopijavimo mygtukas veikia tik moderniose naršyklėse.</span></p>
-        </section>
+                    <article id="troubleshooting">
+                        <h2>8. Trikdžių Diagnostika</h2>
+                        <p>Jei botas elgiasi ne taip, kaip tikėtasi, pirmas žingsnis yra patikrinti jo veiklos įrašus (log'us).</p>
+                        <pre><code class="block">pm2 logs bybit-bot</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</button></pre>
+                    </article>
+                </section>
+            </main>
+        </div>
     </div>
 
     <script>
-    function copyToClipboard(preId) {
-        var pre = document.getElementById(preId);
-        var text = pre.innerText || pre.textContent;
-        // Naudojame document.execCommand kaip patikimesnį būdą iframe aplinkoje
-        var textArea = document.createElement("textarea");
-        textArea.value = text;
-        textArea.style.position = "fixed";  // Išvengiame slinkimo
-        textArea.style.opacity = 0;
+    function copyCode(buttonElement) {
+        const preElement = buttonElement.closest('div').querySelector('pre');
+        if (!preElement) return;
+        
+        const codeText = preElement.innerText || preElement.textContent;
+        
+        const textArea = document.createElement("textarea");
+        textArea.value = codeText;
+        textArea.style.position = "fixed";
+        textArea.style.top = "0";
+        textArea.style.left = "-9999px";
         document.body.appendChild(textArea);
+        
         textArea.focus();
         textArea.select();
+        
         try {
             document.execCommand('copy');
+            buttonElement.textContent = 'Nukopijuota!';
+            buttonElement.classList.add('copied');
+            setTimeout(() => {
+                buttonElement.textContent = 'Kopijuoti';
+                buttonElement.classList.remove('copied');
+            }, 2000);
         } catch (err) {
             console.error('Nepavyko nukopijuoti teksto: ', err);
+            buttonElement.textContent = 'Klaida';
         }
+        
         document.body.removeChild(textArea);
     }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const copyButtons = document.querySelectorAll('.copy-btn');
+        copyButtons.forEach(button => {
+            button.addEventListener('click', () => copyCode(button));
+        });
+    });
     </script>
 
 </body>
