@@ -1,4 +1,4 @@
-// index.js (v4.1 - Versija su pataisytais Telegram pranešimais)
+// index.js (v4.2 - Versija su pataisytu Telegram Markdown formatavimu)
 
 import 'dotenv/config';
 import express from 'express';
@@ -123,35 +123,29 @@ app.post('/webhook', async (req, res) => {
 
         switch (data.action) {
             case 'NEW_PATTERN': {
+                // ... (šis blokas lieka nepakitęs) ...
                 const instrument = await getInstrumentInfo(ticker);
                 if (!instrument) throw new Error(`Kritinė klaida: nepavyko gauti ${ticker} prekybos taisyklių.`);
-
                 const entryPrice = parseFloat(data.entryPrice);
                 const takeProfit = parseFloat(data.takeProfit);
                 const profitDistance = Math.abs(takeProfit - entryPrice);
                 const riskDistance = profitDistance / 2;
                 const stopLoss = data.direction === 'long' ? entryPrice - riskDistance : entryPrice + riskDistance;
-
                 const sl_percent = Math.abs(entryPrice - stopLoss) / entryPrice;
                 if (sl_percent === 0) throw new Error('Stop Loss negali būti lygus įėjimo kainai.');
-
                 const position_size_raw = parseFloat(FIXED_RISK_USD) / (entryPrice * sl_percent);
                 const qty = formatByStep(position_size_raw, instrument.qtyStep);
-
                 if (parseFloat(qty) < instrument.minOrderQty) {
                     const errorMsg = `Apskaičiuotas kiekis (${qty}) yra mažesnis už minimalų leidžiamą (${instrument.minOrderQty}).`;
                     await sendTelegramMessage(`⚠️ *ATMestas Sandoris* [${ticker}]\n\n*Priežastis:* ${errorMsg}`);
                     throw new Error(errorMsg);
                 }
-
                 const order = {
                     category: 'linear', symbol: ticker, side: data.direction === 'long' ? 'Buy' : 'Sell',
                     orderType: 'Market', qty: String(qty), triggerPrice: formatByStep(entryPrice, instrument.tickSize),
                     triggerDirection: data.direction === 'long' ? 1 : 2, positionIdx: positionIdx,
                 };
-                
                 const orderResponse = await bybitClient.submitOrder(order);
-
                 if (orderResponse.retCode === 0) {
                     const orderId = orderResponse.result.orderId;
                     const tradeContext = {
@@ -161,8 +155,6 @@ app.post('/webhook', async (req, res) => {
                         patternName: data.patternName || 'Nenurodyta',
                     };
                     await redisClient.set(redisKey, JSON.stringify(tradeContext));
-                    
-                    // <<<< PATAISYTA DALIS PRADŽIA >>>>
                     const positionValueUSD = parseFloat(qty) * entryPrice;
                     const successMessage = `✅ *Pateiktas Sąlyginis Orderis*\n\n` +
                                            `*Pora:* \`${ticker}\`\n` +
@@ -175,8 +167,6 @@ app.post('/webhook', async (req, res) => {
                                            `*Dydis:* \`${qty} ${ticker.replace('USDT', '')}\` (~$${positionValueUSD.toFixed(2)})\n` +
                                            `*Orderio ID:* \`${orderId}\``;
                     await sendTelegramMessage(successMessage);
-                    // <<<< PATAISYTA DALIS PABAIGA >>>>
-
                 } else {
                     const errorMessage = `❌ *Orderis ATMestas*\n\n` +
                                          `*Pora:* \`${ticker}\`\n` +
@@ -216,11 +206,14 @@ app.post('/webhook', async (req, res) => {
 
                 await appendToSheet(rowData);
                 await redisClient.del(redisKey);
-
-                await sendTelegramMessage(`📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
-                                          `*Pora:* \`${tradeContext.ticker}\`\n` +
-                                          `*Rezultatas:* ${data.outcome}\n` +
-                                          `*P/L:* ${pnlPercent.toFixed(2)}%`);
+                
+                // <<<< PATAISYTA DALIS PRADŽIA >>>>
+                const pnlMessage = `📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
+                                   `*Pora:* \`${tradeContext.ticker}\`\n` +
+                                   `*Rezultatas:* \`${data.outcome}\`\n` +
+                                   `*P/L:* \`${pnlPercent.toFixed(2)}%\``;
+                await sendTelegramMessage(pnlMessage);
+                // <<<< PATAISYTA DALIS PABAIGA >>>>
                 break;
             }
 
@@ -244,7 +237,7 @@ const startServer = async () => {
         await redisClient.connect();
         console.log("✅ Sėkmingai prisijungta prie Redis.");
         app.listen(port, '0.0.0.0', () => {
-            const msg = `🚀 Bybit botas (v4.1 su Sheets ir pranešimais) paleistas ant porto ${port}`;
+            const msg = `🚀 Bybit botas (v4.2 su Sheets ir pranešimais) paleistas ant porto ${port}`;
             console.log(msg);
             sendTelegramMessage(msg);
         });
