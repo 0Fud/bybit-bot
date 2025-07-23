@@ -1,4 +1,4 @@
-// index.js (v4.4 - Pridėta CLOSE_BY_AGE funkcija)
+// index.js (v4.5 - Pridėtas balansas į Telegram ir P/L USD į Sheets)
 
 import 'dotenv/config';
 import express from 'express';
@@ -152,6 +152,7 @@ app.post('/webhook', async (req, res) => {
                         entryPrice: order.triggerPrice, stopLoss: formatByStep(stopLoss, instrument.tickSize),
                         takeProfit: formatByStep(takeProfit, instrument.tickSize),
                         patternName: data.patternName || 'Nenurodyta',
+                        qty: qty // <<< NAUJAS LAUKAS: Išsaugome pozicijos dydi tolimesniam naudojimui
                     };
                     await redisClient.set(redisKey, JSON.stringify(tradeContext));
                     const positionValueUSD = parseFloat(qty) * entryPrice;
@@ -191,16 +192,21 @@ app.post('/webhook', async (req, res) => {
                 const tradeContext = JSON.parse(tradeContextJSON);
                 const closePrice = parseFloat(data.closePrice);
                 const entryPrice = parseFloat(tradeContext.entryPrice);
+                const qty = parseFloat(tradeContext.qty); // <<< NAUJA: Paimame dydi iš Redis
                 
                 let pnlPercent = ((closePrice - entryPrice) / entryPrice) * 100;
+                let pnlUSD = (closePrice - entryPrice) * qty; // <<< NAUJA: Skaičiuojame P/L USD
+                
                 if (tradeContext.direction === 'short') {
                     pnlPercent = -pnlPercent;
+                    pnlUSD = -pnlUSD;
                 }
 
                 const rowData = [
                     new Date().toISOString(), tradeContext.ticker, tradeContext.direction.toUpperCase(),
                     tradeContext.patternName, data.outcome, tradeContext.entryPrice,
                     data.closePrice, pnlPercent.toFixed(2) + '%',
+                    pnlUSD.toFixed(2) // <<< NAUJAS LAUKAS: Pridedame P/L USD į eilutę
                 ];
 
                 await appendToSheet(rowData);
@@ -209,7 +215,7 @@ app.post('/webhook', async (req, res) => {
                 const pnlMessage = `📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
                                    `*Pora:* \`${tradeContext.ticker}\`\n` +
                                    `*Rezultatas:* \`${data.outcome}\`\n` +
-                                   `*P/L:* \`${pnlPercent.toFixed(2)}%\``;
+                                   `*P/L:* \`${pnlPercent.toFixed(2)}%\` (\`${pnlUSD.toFixed(2)} USD\`)`; // <<< NAUJA: P/L USD pranešime
                 await sendTelegramMessage(pnlMessage);
                 break;
             }
@@ -252,11 +258,26 @@ app.post('/webhook', async (req, res) => {
                 });
 
                 if (setStopResponse.retCode === 0) {
+                    // --- NAUJA DALIS: Balanso gavimas ir pridėjimas į pranešimą ---
+                    let balanceMessage = '';
+                    try {
+                        const balanceResponse = await bybitClient.getWalletBalance({ accountType: 'UNIFIED' });
+                        if (balanceResponse.retCode === 0 && balanceResponse.result.list.length > 0) {
+                            const equity = parseFloat(balanceResponse.result.list[0].totalEquity);
+                            balanceMessage = `\n💰 *Sąskaitos balansas:* \`$${equity.toFixed(2)}\``;
+                        }
+                    } catch (balanceError) {
+                        console.error('Klaida gaunant sąskaitos balansą:', balanceError.message);
+                        // Tiesiog nesiųsime balanso informacijos, jei nepavyko jos gauti
+                    }
+                    // --- NAUJOS DALIES PABAIGA ---
+
                     await sendTelegramMessage(`▶️ *Pozicija Atidaryta ir Apsaugota*\n\n` +
                                               `*Pora:* \`${ticker}\`\n` +
                                               `*SL/TP Nustatytas:* Taip\n` +
                                               `*Stop Loss:* \`${data.stopLoss}\`\n` +
-                                              `*Take Profit:* \`${data.takeProfit}\``);
+                                              `*Take Profit:* \`${data.takeProfit}\`` +
+                                              balanceMessage); // Pridedame balanso eilutę
                 } else {
                      await sendTelegramMessage(`‼️ *KRITINĖ KLAIDA*\n\n` +
                                                `*Pora:* \`${ticker}\`\n` +
@@ -275,14 +296,13 @@ app.post('/webhook', async (req, res) => {
                     break;
                 }
                 const tradeContext = JSON.parse(tradeContextJSON);
+                const qty = parseFloat(tradeContext.qty); // <<< NAUJA: Paimame dydi iš Redis
 
-                // 1. Get current position size from Bybit
                 const positionInfo = await bybitClient.getPositionInfo({ category: 'linear', symbol: ticker });
                 const activePosition = positionInfo.result.list.find(p => p.positionIdx === positionIdx && parseFloat(p.size) > 0);
 
                 if (!activePosition) {
                     await sendTelegramMessage(`ℹ️ *Informacija* [${ticker}]\n\nGautas CLOSE_BY_AGE signalas, bet pozicija biržoje nerasta. Tikriausiai jau uždaryta.`);
-                    // Clean up Redis just in case
                     await redisClient.del(redisKey);
                     break;
                 }
@@ -290,47 +310,38 @@ app.post('/webhook', async (req, res) => {
                 const positionSize = activePosition.size;
                 const closingSide = activePosition.side === 'Buy' ? 'Sell' : 'Buy';
 
-                // 2. Submit a closing market order
                 console.log(`[${ticker}] Uždarinėjama pozicija (${positionSize}) dėl laiko...`);
                 const closeOrderResponse = await bybitClient.submitOrder({
-                    category: 'linear',
-                    symbol: ticker,
-                    side: closingSide,
-                    orderType: 'Market',
-                    qty: positionSize,
-                    reduceOnly: true,
-                    positionIdx: positionIdx,
+                    category: 'linear', symbol: ticker, side: closingSide,
+                    orderType: 'Market', qty: positionSize, reduceOnly: true, positionIdx: positionIdx,
                 });
 
                 if (closeOrderResponse.retCode !== 0) {
                     await sendTelegramMessage(`‼️ *KRITINĖ KLAIDA* [${ticker}]\n\nNepavyko uždaryti pozicijos dėl laiko.\n*Bybit Atsakymas:* \`${closeOrderResponse.retMsg}\`\n\n*REIKALINGAS RANKINIS ĮSIKIŠIMAS!*`);
-                    break; // Stop further execution
+                    break;
                 }
                 
                 await sendTelegramMessage(`⏳ *Pozicija Uždaroma Dėl Laiko*\n\n*Pora:* \`${ticker}\`\nPateiktas uždarymo orderis. Laukiami galutiniai rezultatai...`);
 
-                // 3. Log the trade (best effort)
-                // Give a moment for the order to execute and price to update
                 await new Promise(resolve => setTimeout(resolve, 2000)); 
 
                 const tickerInfo = await bybitClient.getTickers({ category: 'linear', symbol: ticker });
-                const approxClosePrice = tickerInfo.result.list[0].lastPrice;
+                const approxClosePrice = parseFloat(tickerInfo.result.list[0].lastPrice);
 
                 const entryPrice = parseFloat(tradeContext.entryPrice);
-                let pnlPercent = ((parseFloat(approxClosePrice) - entryPrice) / entryPrice) * 100;
+                let pnlPercent = ((approxClosePrice - entryPrice) / entryPrice) * 100;
+                let pnlUSD = (approxClosePrice - entryPrice) * qty; // <<< NAUJA: Skaičiuojame P/L USD
+
                 if (tradeContext.direction === 'short') {
                     pnlPercent = -pnlPercent;
+                    pnlUSD = -pnlUSD;
                 }
 
                 const rowData = [
-                    new Date().toISOString(),
-                    tradeContext.ticker,
-                    tradeContext.direction.toUpperCase(),
-                    tradeContext.patternName,
-                    'CLOSED_BY_AGE', // New outcome
-                    tradeContext.entryPrice,
-                    approxClosePrice,
-                    pnlPercent.toFixed(2) + '%',
+                    new Date().toISOString(), tradeContext.ticker, tradeContext.direction.toUpperCase(),
+                    tradeContext.patternName, 'CLOSED_BY_AGE', tradeContext.entryPrice,
+                    approxClosePrice.toString(), pnlPercent.toFixed(2) + '%',
+                    pnlUSD.toFixed(2) // <<< NAUJAS LAUKAS: Pridedame P/L USD
                 ];
 
                 await appendToSheet(rowData);
@@ -339,7 +350,7 @@ app.post('/webhook', async (req, res) => {
                 await sendTelegramMessage(`📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
                                    `*Pora:* \`${tradeContext.ticker}\`\n` +
                                    `*Rezultatas:* \`CLOSED_BY_AGE\`\n` +
-                                   `*P/L (apytikslis):* \`${pnlPercent.toFixed(2)}%\``);
+                                   `*P/L (apytikslis):* \`${pnlPercent.toFixed(2)}%\` (\`${pnlUSD.toFixed(2)} USD\`)`); // <<< NAUJA: P/L USD pranešime
                 break;
             }
         }
@@ -358,7 +369,7 @@ const startServer = async () => {
         await redisClient.connect();
         console.log("✅ Sėkmingai prisijungta prie Redis.");
         app.listen(port, '0.0.0.0', () => {
-            const msg = `🚀 Bybit botas (v4.4 - su CLOSE_BY_AGE) paleistas ant porto ${port}`;
+            const msg = `🚀 Bybit botas (v4.5 - su balansu ir P/L USD) paleistas ant porto ${port}`;
             console.log(msg);
             sendTelegramMessage(msg);
         });

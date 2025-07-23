@@ -440,14 +440,28 @@ git push</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</butt
     </div>
 
     <script>
+    // Pataisyta kopijavimo funkcija
     function copyCode(buttonElement) {
-        const preElement = buttonElement.closest('div').querySelector('pre');
-        if (!preElement) return;
+        // Randa artimiausią tėvinį `<pre>` elementą, kuriame yra mygtukas.
+        const preElement = buttonElement.closest('pre');
+        if (!preElement) {
+            console.error("Kopijavimo mygtukas nerastas <pre> žymoje.");
+            return;
+        }
         
-        const codeText = preElement.innerText || preElement.textContent;
+        // Iš to `<pre>` elemento išrenka `<code>` elementą, kad gautume tikrąjį kodą.
+        const codeElement = preElement.querySelector('code');
+        if (!codeElement) {
+            console.error("<pre> žyma neturi vidinės <code> žymos.");
+            return;
+        }
         
+        // Gauna tik `<code>` elemento tekstą (be mygtuko teksto).
+        const codeText = codeElement.innerText || codeElement.textContent;
+        
+        // Sukuria laikiną `textarea` elementą, kad būtų galima atlikti kopijavimo veiksmą.
         const textArea = document.createElement("textarea");
-        textArea.value = codeText;
+        textArea.value = codeText.trim(); // Išvalo nereikalingus tarpus
         textArea.style.position = "fixed";
         textArea.style.top = "0";
         textArea.style.left = "-9999px";
@@ -460,6 +474,7 @@ git push</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</butt
             document.execCommand('copy');
             buttonElement.textContent = 'Nukopijuota!';
             buttonElement.classList.add('copied');
+            // Po 2 sekundžių grąžina mygtuko tekstą į pradinę būseną.
             setTimeout(() => {
                 buttonElement.textContent = 'Kopijuoti';
                 buttonElement.classList.remove('copied');
@@ -471,13 +486,6 @@ git push</code><button class="copy-btn" onclick="copyCode(this)">Kopijuoti</butt
         
         document.body.removeChild(textArea);
     }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        const copyButtons = document.querySelectorAll('.copy-btn');
-        copyButtons.forEach(button => {
-            button.addEventListener('click', () => copyCode(button));
-        });
-    });
     </script>
 
 </body>
