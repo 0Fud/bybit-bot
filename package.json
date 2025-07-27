@@ -1,7 +1,7 @@
 {
-  "name": "bybit-bot-hetzner",
-  "version": "1.0.0",
-  "description": "Bybit trading bot for Hetzner VPS",
+  "name": "bybit-trading-bot",
+  "version": "5.0.0",
+  "description": "Trading bot for Bybit with multi-account support and a queue system.",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -10,9 +10,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.7.2",
-    "bybit-api": "^3.9.0",
+    "axios": "^1.6.8",
+    "bullmq": "^5.7.9",
+    "bybit-api": "^3.9.1",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "googleapis": "^137.1.0",
+    "redis": "^4.6.13"
   }
 }

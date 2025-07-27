@@ -1,4 +1,4 @@
-// index.js (v4.5 - Pridėtas balansas į Telegram ir P/L USD į Sheets)
+// server.js (v5.0 - Multi-Account & Queue Architecture)
 
 import 'dotenv/config';
 import express from 'express';
@@ -6,7 +6,7 @@ import axios from 'axios';
 import { RestClientV5 } from 'bybit-api';
 import { createClient } from 'redis';
 import { google } from 'googleapis';
-import cron from 'node-cron';
+import { Queue, Worker } from 'bullmq';
 
 // --- APLIKACIJOS KONFIGŪRACIJA ---
 const app = express();
@@ -16,15 +16,17 @@ const port = process.env.PORT || 3000;
 const {
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHANNEL_ID,
-    BYBIT_API_KEY,
-    BYBIT_API_SECRET,
     FIXED_RISK_USD,
     GOOGLE_SHEET_ID,
-    GOOGLE_CREDENTIALS_PATH
+    GOOGLE_CREDENTIALS_PATH,
+    REDIS_URL, // pvz., "redis://localhost:6379"
+    MAX_SUBACCOUNTS = '11'
 } = process.env;
 
+const MAX_SUBACCOUNTS_NUM = parseInt(MAX_SUBACCOUNTS, 10);
+
 // --- KRITINIŲ KINTAMŲJŲ PATIKRINIMAS ---
-const requiredEnvVars = ['BYBIT_API_KEY', 'BYBIT_API_SECRET', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHANNEL_ID', 'FIXED_RISK_USD', 'GOOGLE_SHEET_ID', 'GOOGLE_CREDENTIALS_PATH'];
+const requiredEnvVars = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHANNEL_ID', 'FIXED_RISK_USD', 'GOOGLE_SHEET_ID', 'GOOGLE_CREDENTIALS_PATH', 'REDIS_URL'];
 for (const varName of requiredEnvVars) {
     if (!process.env[varName]) {
         console.error(`❌ Trūksta būtino .env kintamojo: ${varName}`);
@@ -33,19 +35,47 @@ for (const varName of requiredEnvVars) {
 }
 
 // --- KLIENTŲ INICIALIZAVIMAS ---
-const bybitClient = new RestClientV5({ key: BYBIT_API_KEY, secret: BYBIT_API_SECRET, testnet: false });
-const redisClient = createClient();
+
+// Bybit klientai sub-sąskaitoms
+const bybitClients = new Map();
+
+// Redis klientas ir BullMQ eilės konfigūracija
+const redisConnection = {
+    url: REDIS_URL,
+    // BullMQ reikalauja, kad maxretries per reconnect būtų 0, kad išvengti klaidų
+    // kai Redis trumpam atsijungia.
+    redisOptions: { maxRetriesPerRequest: null, enableReadyCheck: false }
+};
+const redisClient = createClient({ url: REDIS_URL });
 redisClient.on('error', err => console.error('❌ Redis Client Error', err));
+
+// BullMQ Eilė ir Darbininkas (Worker)
+const tradingQueue = new Queue('trading-signals', { connection: redisConnection.url });
+const worker = new Worker('trading-signals', handleJob, {
+    connection: redisConnection.url,
+    limiter: {
+        max: 1, // Vykdyti po 1 užduotį
+        duration: 150, // Kas 150ms (atitinka ~6.6 užklausų/sek, saugu nuo Bybit 10/sek limito)
+    },
+});
+
+worker.on('completed', job => console.log(`✅ Užduotis ${job.id} sėkmingai įvykdyta.`));
+worker.on('failed', (job, err) => console.error(`❌ Užduotis ${job.id} nepavyko:`, err.message));
+
 
 // --- PAGALBINĖS FUNKCIJOS ---
 
 const instrumentInfoCache = new Map();
 
+// Funkcija gauna instrumento info. Naudoja pirmą veikiantį klientą, nes info nėra specifinė sąskaitai.
 async function getInstrumentInfo(symbol) {
     if (instrumentInfoCache.has(symbol)) return instrumentInfoCache.get(symbol);
     try {
+        const mainClient = bybitClients.get(1) || Array.from(bybitClients.values())[0];
+        if (!mainClient) throw new Error("Nėra sukonfigūruotų Bybit klientų.");
+
         console.log(`[${symbol}] Gaunama instrumento informacija iš Bybit...`);
-        const response = await bybitClient.getInstrumentsInfo({ category: 'linear', symbol });
+        const response = await mainClient.getInstrumentsInfo({ category: 'linear', symbol });
         if (response.retCode !== 0 || !response.result.list || response.result.list.length === 0) {
             throw new Error(`Nepavyko gauti ${symbol} informacijos: ${response.retMsg}`);
         }
@@ -107,269 +137,283 @@ async function appendToSheet(rowData) {
     }
 }
 
-
-// --- PAGRINDINIS WEBHOOK MARŠRUTAS ---
+// --- WEBHOOK MARŠRUTAS (TIK PRIDEDA UŽDUOTĮ Į EILĘ) ---
 app.post('/webhook', async (req, res) => {
-    console.log('\n--- Gaunamas signalas ---');
+    console.log('\n--- Gaunamas signalas, dedamas į eilę ---');
     const data = req.body;
     console.log('Gauti duomenys:', data);
 
-    try {
-        if (!data.action || !data.ticker) return res.status(200).json({ status: 'ignored' });
+    if (!data.action || !data.ticker) {
+        return res.status(200).json({ status: 'ignored', message: 'Missing action or ticker.' });
+    }
 
+    try {
+        await tradingQueue.add('signal', data);
+        res.status(202).json({ status: 'accepted', message: 'Signal queued for processing.' });
+    } catch (error) {
+        console.error('❌ KLAIDA DEDANT Į EILĘ:', error.message);
+        await sendTelegramMessage(`🆘 *Boto Vidinė Klaida*\n\n*Problema:* Nepavyko pridėti signalo į eilę.\n*Priežastis:* \`${error.message}\``);
+        res.status(500).json({ status: 'error', error: 'Failed to queue signal.' });
+    }
+});
+
+
+// --- EILĖS DARBININKO (WORKER) LOGIKA ---
+async function handleJob(job) {
+    console.log(`\n--- Pradedama vykdyti užduotis ${job.id} ---`);
+    const data = job.data;
+    console.log('Apdorojami duomenys:', data);
+
+    try {
         const ticker = data.ticker.replace('.P', '');
         const positionIdx = parseInt(data.positionIdx, 10);
-        const redisKey = `${ticker}_${positionIdx}`;
 
         switch (data.action) {
             case 'NEW_PATTERN': {
                 const instrument = await getInstrumentInfo(ticker);
                 if (!instrument) throw new Error(`Kritinė klaida: nepavyko gauti ${ticker} prekybos taisyklių.`);
-                const entryPrice = parseFloat(data.entryPrice);
-                const takeProfit = parseFloat(data.takeProfit);
-                const profitDistance = Math.abs(takeProfit - entryPrice);
-                const riskDistance = profitDistance / 2;
-                const stopLoss = data.direction === 'long' ? entryPrice - riskDistance : entryPrice + riskDistance;
-                const sl_percent = Math.abs(entryPrice - stopLoss) / entryPrice;
-                if (sl_percent === 0) throw new Error('Stop Loss negali būti lygus įėjimo kainai.');
-                const position_size_raw = parseFloat(FIXED_RISK_USD) / (entryPrice * sl_percent);
-                const qty = formatByStep(position_size_raw, instrument.qtyStep);
-                if (parseFloat(qty) < instrument.minOrderQty) {
-                    const errorMsg = `Apskaičiuotas kiekis (${qty}) yra mažesnis už minimalų leidžiamą (${instrument.minOrderQty}).`;
-                    await sendTelegramMessage(`⚠️ *ATMestas Sandoris* [${ticker}]\n\n*Priežastis:* ${errorMsg}`);
-                    throw new Error(errorMsg);
-                }
-                const order = {
-                    category: 'linear', symbol: ticker, side: data.direction === 'long' ? 'Buy' : 'Sell',
-                    orderType: 'Market', qty: String(qty), triggerPrice: formatByStep(entryPrice, instrument.tickSize),
-                    triggerDirection: data.direction === 'long' ? 1 : 2, positionIdx: positionIdx,
-                };
-                const orderResponse = await bybitClient.submitOrder(order);
-                if (orderResponse.retCode === 0) {
-                    const orderId = orderResponse.result.orderId;
-                    const tradeContext = {
-                        orderId, ticker, direction: data.direction,
-                        entryPrice: order.triggerPrice, stopLoss: formatByStep(stopLoss, instrument.tickSize),
-                        takeProfit: formatByStep(takeProfit, instrument.tickSize),
-                        patternName: data.patternName || 'Nenurodyta',
-                        qty: qty // <<< NAUJAS LAUKAS: Išsaugome pozicijos dydi tolimesniam naudojimui
-                    };
-                    await redisClient.set(redisKey, JSON.stringify(tradeContext));
-                    const positionValueUSD = parseFloat(qty) * entryPrice;
-                    const successMessage = `✅ *Pateiktas Sąlyginis Orderis*\n\n` +
-                                           `*Pora:* \`${ticker}\`\n` +
-                                           `*Kryptis:* ${data.direction.toUpperCase()}\n` +
-                                           `*Pattern:* \`${tradeContext.patternName}\`\n` +
-                                           `*Rizika:* $${parseFloat(FIXED_RISK_USD).toFixed(2)}\n\n` +
-                                           `*Įėjimas:* \`${tradeContext.entryPrice}\`\n` +
-                                           `*Stop Loss:* \`${tradeContext.stopLoss}\`\n` +
-                                           `*Take Profit:* \`${tradeContext.takeProfit}\`\n\n` +
-                                           `*Dydis:* \`${qty} ${ticker.replace('USDT', '')}\` (~$${positionValueUSD.toFixed(2)})\n` +
-                                           `*Orderio ID:* \`${orderId}\``;
-                    await sendTelegramMessage(successMessage);
-                } else {
-                    const errorMessage = `❌ *Orderis ATMestas*\n\n` +
-                                         `*Pora:* \`${ticker}\`\n` +
-                                         `*Kryptis:* ${data.direction.toUpperCase()}\n` +
-                                         `*Bandytas Dydis:* \`${qty}\`\n\n` +
-                                         `*Bybit Klaida (${orderResponse.retCode}):*\n` +
-                                         `\`${orderResponse.retMsg}\``;
-                    await sendTelegramMessage(errorMessage);
-                    throw new Error(`Bybit klaida: ${orderResponse.retMsg}`);
-                }
-                break;
-            }
 
-            case 'TRADE_CLOSED': {
-                console.log(`[${ticker}] Vykdomas veiksmas: TRADE_CLOSED`);
-                const tradeContextJSON = await redisClient.get(redisKey);
+                let tradePlaced = false;
+                for (let i = 1; i <= MAX_SUBACCOUNTS_NUM; i++) {
+                    const subAccountId = i;
+                    const bybitClient = bybitClients.get(subAccountId);
+                    if (!bybitClient) continue; // Praleisti, jei ši sub-sąskaita nesukonfigūruota
 
-                if (!tradeContextJSON) {
-                    console.log(`[${ticker}] Gautas TRADE_CLOSED, bet nerasta aktyvaus sandorio Redis'e. Ignoruojama.`);
-                    break;
-                }
+                    const redisKey = `${ticker}_${positionIdx}_sub${subAccountId}`;
+                    const existingTrade = await redisClient.get(redisKey);
 
-                const tradeContext = JSON.parse(tradeContextJSON);
-                const closePrice = parseFloat(data.closePrice);
-                const entryPrice = parseFloat(tradeContext.entryPrice);
-                const qty = parseFloat(tradeContext.qty); // <<< NAUJA: Paimame dydi iš Redis
-                
-                let pnlPercent = ((closePrice - entryPrice) / entryPrice) * 100;
-                let pnlUSD = (closePrice - entryPrice) * qty; // <<< NAUJA: Skaičiuojame P/L USD
-                
-                if (tradeContext.direction === 'short') {
-                    pnlPercent = -pnlPercent;
-                    pnlUSD = -pnlUSD;
-                }
+                    if (!existingTrade) {
+                        // Rasta laisva sub-sąskaita, bandoma atidaryti sandorį
+                        console.log(`[Sub-${subAccountId}] Laisva, bandoma atidaryti ${ticker}...`);
 
-                const rowData = [
-                    new Date().toISOString(), tradeContext.ticker, tradeContext.direction.toUpperCase(),
-                    tradeContext.patternName, data.outcome, tradeContext.entryPrice,
-                    data.closePrice, pnlPercent.toFixed(2) + '%',
-                    pnlUSD.toFixed(2) // <<< NAUJAS LAUKAS: Pridedame P/L USD į eilutę
-                ];
+                        const entryPrice = parseFloat(data.entryPrice);
+                        const takeProfit = parseFloat(data.takeProfit);
+                        const profitDistance = Math.abs(takeProfit - entryPrice);
+                        const riskDistance = profitDistance / 2;
+                        const stopLoss = data.direction === 'long' ? entryPrice - riskDistance : entryPrice + riskDistance;
+                        const sl_percent = Math.abs(entryPrice - stopLoss) / entryPrice;
+                        if (sl_percent === 0) throw new Error('Stop Loss negali būti lygus įėjimo kainai.');
+                        
+                        const position_size_raw = parseFloat(FIXED_RISK_USD) / (entryPrice * sl_percent);
+                        const qty = formatByStep(position_size_raw, instrument.qtyStep);
 
-                await appendToSheet(rowData);
-                await redisClient.del(redisKey);
-                
-                const pnlMessage = `📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
-                                   `*Pora:* \`${tradeContext.ticker}\`\n` +
-                                   `*Rezultatas:* \`${data.outcome}\`\n` +
-                                   `*P/L:* \`${pnlPercent.toFixed(2)}%\` (\`${pnlUSD.toFixed(2)} USD\`)`; // <<< NAUJA: P/L USD pranešime
-                await sendTelegramMessage(pnlMessage);
-                break;
-            }
-
-            case 'INVALIDATE_PATTERN': {
-                console.log(`[${ticker}] Vykdomas veiksmas: INVALIDATE_PATTERN`);
-                const tradeContextJSON = await redisClient.get(redisKey);
-                if (!tradeContextJSON) {
-                    console.log(`[${ticker}] Nerastas aktyvus sąlyginis orderis, kurį būtų galima atšaukti.`);
-                    await sendTelegramMessage(`ℹ️ [${ticker}] Gautas INVALIDATE signalas, bet aktyvus sąlyginis orderis nerastas. Jokių veiksmų nesiimta.`);
-                    break;
-                }
-                const tradeContext = JSON.parse(tradeContextJSON);
-                const orderId = tradeContext.orderId;
-
-                console.log(`[${ticker}] Atšaukiamas orderis su ID: ${orderId}`);
-                const cancelResponse = await bybitClient.cancelOrder({ category: 'linear', symbol: ticker, orderId: orderId });
-
-                if (cancelResponse.retCode === 0) {
-                    await redisClient.del(redisKey);
-                    await sendTelegramMessage(`🗑️ *Sąlyginis Orderis Atšauktas*\n\n*Pora:* \`${ticker}\`\n*Orderio ID:* \`${orderId}\``);
-                } else {
-                    await sendTelegramMessage(`⚠️ *Klaida Atšaukiant Orderį*\n\n*Pora:* \`${ticker}\`\n*Orderio ID:* \`${orderId}\`\n*Bybit Atsakymas:* \`${cancelResponse.retMsg}\``);
-                }
-                break;
-            }
-
-            case 'ENTERED_POSITION': {
-                console.log(`[${ticker}] Vykdomas veiksmas: ENTERED_POSITION`);
-                
-                const tradeContextJSON = await redisClient.get(redisKey);
-                if (!tradeContextJSON) {
-                     console.log(`[${ticker}] Gautas ENTERED_POSITION, bet nerasta aktyvaus sandorio Redis'e.`);
-                }
-
-                console.log(`[${ticker}] Nustatomas SL/TP...`);
-                const setStopResponse = await bybitClient.setTradingStop({
-                    category: 'linear', symbol: ticker, positionIdx: positionIdx,
-                    stopLoss: String(data.stopLoss), takeProfit: String(data.takeProfit)
-                });
-
-                if (setStopResponse.retCode === 0) {
-                    // --- NAUJA DALIS: Balanso gavimas ir pridėjimas į pranešimą ---
-                    let balanceMessage = '';
-                    try {
-                        const balanceResponse = await bybitClient.getWalletBalance({ accountType: 'UNIFIED' });
-                        if (balanceResponse.retCode === 0 && balanceResponse.result.list.length > 0) {
-                            const equity = parseFloat(balanceResponse.result.list[0].totalEquity);
-                            balanceMessage = `\n💰 *Sąskaitos balansas:* \`$${equity.toFixed(2)}\``;
+                        if (parseFloat(qty) < instrument.minOrderQty) {
+                            const errorMsg = `Apskaičiuotas kiekis (${qty}) yra mažesnis už minimalų leidžiamą (${instrument.minOrderQty}).`;
+                            await sendTelegramMessage(`⚠️ *ATMestas Sandoris* [${ticker}] [Sub-${subAccountId}]\n\n*Priežastis:* ${errorMsg}`);
+                            console.log(`[Sub-${subAccountId}] ${errorMsg}`);
+                            tradePlaced = true; // Pažymime, kad nereikia siųsti "visos sąskaitos užimtos" pranešimo
+                            break; // Nutraukiame, nes kitose sąskaitose bus ta pati problema
                         }
-                    } catch (balanceError) {
-                        console.error('Klaida gaunant sąskaitos balansą:', balanceError.message);
-                        // Tiesiog nesiųsime balanso informacijos, jei nepavyko jos gauti
-                    }
-                    // --- NAUJOS DALIES PABAIGA ---
 
-                    await sendTelegramMessage(`▶️ *Pozicija Atidaryta ir Apsaugota*\n\n` +
-                                              `*Pora:* \`${ticker}\`\n` +
-                                              `*SL/TP Nustatytas:* Taip\n` +
-                                              `*Stop Loss:* \`${data.stopLoss}\`\n` +
-                                              `*Take Profit:* \`${data.takeProfit}\`` +
-                                              balanceMessage); // Pridedame balanso eilutę
-                } else {
-                     await sendTelegramMessage(`‼️ *KRITINĖ KLAIDA*\n\n` +
-                                               `*Pora:* \`${ticker}\`\n` +
-                                               `*Problema:* Pozicija atidaryta, BET nepavyko nustatyti SL/TP!\n` +
-                                               `*Bybit Atsakymas:* \`${setStopResponse.retMsg}\`\n\n` +
-                                               `*REIKALINGAS RANKINIS ĮSIKIŠIMAS!*`);
+                        const order = {
+                            category: 'linear', symbol: ticker, side: data.direction === 'long' ? 'Buy' : 'Sell',
+                            orderType: 'Market', qty: String(qty), triggerPrice: formatByStep(entryPrice, instrument.tickSize),
+                            triggerDirection: data.direction === 'long' ? 1 : 2, positionIdx: positionIdx,
+                        };
+                        const orderResponse = await bybitClient.submitOrder(order);
+
+                        if (orderResponse.retCode === 0) {
+                            const orderId = orderResponse.result.orderId;
+                            const tradeContext = {
+                                orderId, ticker, direction: data.direction,
+                                entryPrice: order.triggerPrice, stopLoss: formatByStep(stopLoss, instrument.tickSize),
+                                takeProfit: formatByStep(takeProfit, instrument.tickSize),
+                                patternName: data.patternName || 'Nenurodyta', qty: qty, subAccountId
+                            };
+                            await redisClient.set(redisKey, JSON.stringify(tradeContext));
+                            
+                            const positionValueUSD = parseFloat(qty) * entryPrice;
+                            const successMessage = `[Sub-${subAccountId}] ✅ *Pateiktas Sąlyginis Orderis*\n\n` +
+                                                   `*Pora:* \`${ticker}\`\n` +
+                                                   `*Kryptis:* ${data.direction.toUpperCase()}\n` +
+                                                   `*Pattern:* \`${tradeContext.patternName}\`\n` +
+                                                   `*Rizika:* $${parseFloat(FIXED_RISK_USD).toFixed(2)}\n\n` +
+                                                   `*Įėjimas:* \`${tradeContext.entryPrice}\`\n` +
+                                                   `*Stop Loss:* \`${tradeContext.stopLoss}\`\n` +
+                                                   `*Take Profit:* \`${tradeContext.takeProfit}\`\n\n` +
+                                                   `*Dydis:* \`${qty} ${ticker.replace('USDT', '')}\` (~$${positionValueUSD.toFixed(2)})\n` +
+                                                   `*Orderio ID:* \`${orderId}\``;
+                            await sendTelegramMessage(successMessage);
+                            tradePlaced = true;
+                            break; // Sėkmingai pateikėm, išeinam iš ciklo
+                        } else {
+                            const errorMessage = `[Sub-${subAccountId}] ❌ *Orderis ATMestas*\n\n` +
+                                                 `*Pora:* \`${ticker}\`\n` +
+                                                 `*Bybit Klaida (${orderResponse.retCode}):*\n` +
+                                                 `\`${orderResponse.retMsg}\``;
+                            await sendTelegramMessage(errorMessage);
+                            // Nenutraukiame ciklo, galbūt kita sąskaita veiks
+                        }
+                    }
+                }
+
+                if (!tradePlaced) {
+                    await sendTelegramMessage(`⚠️ *Visos Sąskaitos Užimtos*\n\n*Pora:* \`${ticker}\`\nNebuvo rastos laisvos sub-sąskaitos naujam sandoriui. Signalas praleistas.`);
                 }
                 break;
             }
 
-            case 'CLOSE_BY_AGE': {
-                console.log(`[${ticker}] Vykdomas veiksmas: CLOSE_BY_AGE`);
-                const tradeContextJSON = await redisClient.get(redisKey);
-                if (!tradeContextJSON) {
-                    await sendTelegramMessage(`⚠️ *Uždarymo Klaida* [${ticker}]\n\nGautas CLOSE_BY_AGE signalas, bet nerasta aktyvaus sandorio. Galbūt jau buvo uždarytas.`);
-                    break;
+            // Visi kiti veiksmai ieško aktyvaus sandorio per visas sub-sąskaitas
+            default: {
+                let tradeFound = false;
+                for (let i = 1; i <= MAX_SUBACCOUNTS_NUM; i++) {
+                    const subAccountId = i;
+                    const bybitClient = bybitClients.get(subAccountId);
+                    if (!bybitClient) continue;
+
+                    const redisKey = `${ticker}_${positionIdx}_sub${subAccountId}`;
+                    const tradeContextJSON = await redisClient.get(redisKey);
+
+                    if (tradeContextJSON) {
+                        const tradeContext = JSON.parse(tradeContextJSON);
+                        tradeFound = true;
+                        
+                        console.log(`[Sub-${subAccountId}] Radome aktyvų sandorį ${ticker}. Vykdomas veiksmas: ${data.action}`);
+
+                        switch (data.action) {
+                            case 'TRADE_CLOSED': {
+                                const closePrice = parseFloat(data.closePrice);
+                                const entryPrice = parseFloat(tradeContext.entryPrice);
+                                const qty = parseFloat(tradeContext.qty);
+                                let pnlPercent = ((closePrice - entryPrice) / entryPrice) * 100;
+                                let pnlUSD = (closePrice - entryPrice) * qty;
+                                if (tradeContext.direction === 'short') {
+                                    pnlPercent = -pnlPercent;
+                                    pnlUSD = -pnlUSD;
+                                }
+                                const rowData = [
+                                    new Date().toISOString(), tradeContext.ticker, tradeContext.direction.toUpperCase(),
+                                    tradeContext.patternName, data.outcome, tradeContext.entryPrice,
+                                    data.closePrice, pnlPercent.toFixed(2) + '%', pnlUSD.toFixed(2)
+                                ];
+                                await appendToSheet(rowData);
+                                await redisClient.del(redisKey);
+                                const pnlMessage = `[Sub-${subAccountId}] 📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
+                                                   `*Pora:* \`${tradeContext.ticker}\`\n` +
+                                                   `*Rezultatas:* \`${data.outcome}\`\n` +
+                                                   `*P/L:* \`${pnlPercent.toFixed(2)}%\` (\`${pnlUSD.toFixed(2)} USD\`)`;
+                                await sendTelegramMessage(pnlMessage);
+                                break;
+                            }
+                            case 'INVALIDATE_PATTERN': {
+                                const orderId = tradeContext.orderId;
+                                const cancelResponse = await bybitClient.cancelOrder({ category: 'linear', symbol: ticker, orderId: orderId });
+                                if (cancelResponse.retCode === 0) {
+                                    await redisClient.del(redisKey);
+                                    await sendTelegramMessage(`[Sub-${subAccountId}] 🗑️ *Sąlyginis Orderis Atšauktas*\n\n*Pora:* \`${ticker}\`\n*Orderio ID:* \`${orderId}\``);
+                                } else {
+                                    await sendTelegramMessage(`[Sub-${subAccountId}] ⚠️ *Klaida Atšaukiant Orderį*\n\n*Pora:* \`${ticker}\`\n*Bybit Atsakymas:* \`${cancelResponse.retMsg}\``);
+                                }
+                                break;
+                            }
+                            case 'ENTERED_POSITION': {
+                                const setStopResponse = await bybitClient.setTradingStop({
+                                    category: 'linear', symbol: ticker, positionIdx: positionIdx,
+                                    stopLoss: String(data.stopLoss), takeProfit: String(data.takeProfit)
+                                });
+                                let balanceMessage = '';
+                                try {
+                                    const balanceResponse = await bybitClient.getWalletBalance({ accountType: 'UNIFIED' });
+                                    if (balanceResponse.retCode === 0 && balanceResponse.result.list.length > 0) {
+                                        const equity = parseFloat(balanceResponse.result.list[0].totalEquity);
+                                        balanceMessage = `\n💰 *Balansas:* \`$${equity.toFixed(2)}\``;
+                                    }
+                                } catch (balanceError) { console.error('Klaida gaunant sąskaitos balansą:', balanceError.message); }
+
+                                if (setStopResponse.retCode === 0) {
+                                    await sendTelegramMessage(`[Sub-${subAccountId}] ▶️ *Pozicija Atidaryta ir Apsaugota*\n\n` +
+                                                              `*Pora:* \`${ticker}\`\n` +
+                                                              `*SL/TP Nustatytas:* Taip` + balanceMessage);
+                                } else {
+                                     await sendTelegramMessage(`[Sub-${subAccountId}] ‼️ *KRITINĖ KLAIDA*\n\n` +
+                                                               `*Pora:* \`${ticker}\`\n` +
+                                                               `*Problema:* Nepavyko nustatyti SL/TP!\n` +
+                                                               `*Bybit Atsakymas:* \`${setStopResponse.retMsg}\`\n\n` +
+                                                               `*REIKALINGAS RANKINIS ĮSIKIŠIMAS!*`);
+                                }
+                                break;
+                            }
+                            case 'CLOSE_BY_AGE': {
+                                const positionInfo = await bybitClient.getPositionInfo({ category: 'linear', symbol: ticker });
+                                const activePosition = positionInfo.result.list.find(p => p.positionIdx === positionIdx && parseFloat(p.size) > 0);
+                                if (!activePosition) {
+                                    await sendTelegramMessage(`[Sub-${subAccountId}] ℹ️ *Informacija* [${ticker}]\n\nGautas CLOSE_BY_AGE signalas, bet pozicija biržoje nerasta. Tikriausiai jau uždaryta.`);
+                                    await redisClient.del(redisKey);
+                                    break;
+                                }
+                                const closeOrderResponse = await bybitClient.submitOrder({
+                                    category: 'linear', symbol: ticker, side: activePosition.side === 'Buy' ? 'Sell' : 'Buy',
+                                    orderType: 'Market', qty: activePosition.size, reduceOnly: true, positionIdx: positionIdx,
+                                });
+                                if (closeOrderResponse.retCode !== 0) {
+                                    await sendTelegramMessage(`[Sub-${subAccountId}] ‼️ *KRITINĖ KLAIDA* [${ticker}]\n\nNepavyko uždaryti pozicijos dėl laiko.\n*Bybit Atsakymas:* \`${closeOrderResponse.retMsg}\`\n\n*REIKALINGAS RANKINIS ĮSIKIŠIMAS!*`);
+                                    break;
+                                }
+                                await sendTelegramMessage(`[Sub-${subAccountId}] ⏳ *Pozicija Uždaroma Dėl Laiko*\n\n*Pora:* \`${ticker}\``);
+                                // Logika įrašymui į Sheets (supaprastinta, nes tiksli kaina nežinoma iškart)
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                                const tickerInfo = await bybitClient.getTickers({ category: 'linear', symbol: ticker });
+                                const approxClosePrice = parseFloat(tickerInfo.result.list[0].lastPrice);
+                                const entryPrice = parseFloat(tradeContext.entryPrice);
+                                const qty = parseFloat(tradeContext.qty);
+                                let pnlPercent = ((approxClosePrice - entryPrice) / entryPrice) * 100;
+                                let pnlUSD = (approxClosePrice - entryPrice) * qty;
+                                if (tradeContext.direction === 'short') { pnlPercent = -pnlPercent; pnlUSD = -pnlUSD; }
+                                const rowData = [
+                                    new Date().toISOString(), tradeContext.ticker, tradeContext.direction.toUpperCase(),
+                                    tradeContext.patternName, 'CLOSED_BY_AGE', tradeContext.entryPrice,
+                                    approxClosePrice.toString(), pnlPercent.toFixed(2) + '%', pnlUSD.toFixed(2)
+                                ];
+                                await appendToSheet(rowData);
+                                await redisClient.del(redisKey);
+                                await sendTelegramMessage(`[Sub-${subAccountId}] 📈 *Sandoris Užfiksuotas Žurnale (Pagal Laiką)*\n\n` +
+                                                          `*Pora:* \`${tradeContext.ticker}\`\n*P/L (apytikslis):* \`${pnlPercent.toFixed(2)}%\` (\`${pnlUSD.toFixed(2)} USD\`)`);
+                                break;
+                            }
+                        }
+                        break; // Radom ir apdorojom, išeinam iš sub-sąskaitų ciklo
+                    }
                 }
-                const tradeContext = JSON.parse(tradeContextJSON);
-                const qty = parseFloat(tradeContext.qty); // <<< NAUJA: Paimame dydi iš Redis
-
-                const positionInfo = await bybitClient.getPositionInfo({ category: 'linear', symbol: ticker });
-                const activePosition = positionInfo.result.list.find(p => p.positionIdx === positionIdx && parseFloat(p.size) > 0);
-
-                if (!activePosition) {
-                    await sendTelegramMessage(`ℹ️ *Informacija* [${ticker}]\n\nGautas CLOSE_BY_AGE signalas, bet pozicija biržoje nerasta. Tikriausiai jau uždaryta.`);
-                    await redisClient.del(redisKey);
-                    break;
+                if (!tradeFound && data.action !== 'NEW_PATTERN') {
+                     console.log(`[${ticker}] Gautas ${data.action} signalas, bet nerasta aktyvaus sandorio jokioje sub-sąskaitoje. Ignoruojama.`);
                 }
-
-                const positionSize = activePosition.size;
-                const closingSide = activePosition.side === 'Buy' ? 'Sell' : 'Buy';
-
-                console.log(`[${ticker}] Uždarinėjama pozicija (${positionSize}) dėl laiko...`);
-                const closeOrderResponse = await bybitClient.submitOrder({
-                    category: 'linear', symbol: ticker, side: closingSide,
-                    orderType: 'Market', qty: positionSize, reduceOnly: true, positionIdx: positionIdx,
-                });
-
-                if (closeOrderResponse.retCode !== 0) {
-                    await sendTelegramMessage(`‼️ *KRITINĖ KLAIDA* [${ticker}]\n\nNepavyko uždaryti pozicijos dėl laiko.\n*Bybit Atsakymas:* \`${closeOrderResponse.retMsg}\`\n\n*REIKALINGAS RANKINIS ĮSIKIŠIMAS!*`);
-                    break;
-                }
-                
-                await sendTelegramMessage(`⏳ *Pozicija Uždaroma Dėl Laiko*\n\n*Pora:* \`${ticker}\`\nPateiktas uždarymo orderis. Laukiami galutiniai rezultatai...`);
-
-                await new Promise(resolve => setTimeout(resolve, 2000)); 
-
-                const tickerInfo = await bybitClient.getTickers({ category: 'linear', symbol: ticker });
-                const approxClosePrice = parseFloat(tickerInfo.result.list[0].lastPrice);
-
-                const entryPrice = parseFloat(tradeContext.entryPrice);
-                let pnlPercent = ((approxClosePrice - entryPrice) / entryPrice) * 100;
-                let pnlUSD = (approxClosePrice - entryPrice) * qty; // <<< NAUJA: Skaičiuojame P/L USD
-
-                if (tradeContext.direction === 'short') {
-                    pnlPercent = -pnlPercent;
-                    pnlUSD = -pnlUSD;
-                }
-
-                const rowData = [
-                    new Date().toISOString(), tradeContext.ticker, tradeContext.direction.toUpperCase(),
-                    tradeContext.patternName, 'CLOSED_BY_AGE', tradeContext.entryPrice,
-                    approxClosePrice.toString(), pnlPercent.toFixed(2) + '%',
-                    pnlUSD.toFixed(2) // <<< NAUJAS LAUKAS: Pridedame P/L USD
-                ];
-
-                await appendToSheet(rowData);
-                await redisClient.del(redisKey);
-
-                await sendTelegramMessage(`📈 *Sandoris Užfiksuotas Žurnale*\n\n` +
-                                   `*Pora:* \`${tradeContext.ticker}\`\n` +
-                                   `*Rezultatas:* \`CLOSED_BY_AGE\`\n` +
-                                   `*P/L (apytikslis):* \`${pnlPercent.toFixed(2)}%\` (\`${pnlUSD.toFixed(2)} USD\`)`); // <<< NAUJA: P/L USD pranešime
-                break;
             }
         }
-        res.status(200).json({ status: 'success' });
     } catch (error) {
-        console.error('❌ KLAIDA APDOROJANT SIGNALĄ:', error.message);
-        await sendTelegramMessage(`🆘 *Boto Vidinė Klaida*\n\n*Problema:* \`${error.message}\`\n*Gauti Duomenys:* \`${JSON.stringify(req.body)}\``);
-        res.status(500).json({ status: 'error', error: error.message });
+        console.error(`❌ KLAIDA APDOROJANT UŽDUOTĮ ${job.id}:`, error.message, error.stack);
+        await sendTelegramMessage(`🆘 *Boto Vidinė Klaida (Worker)*\n\n*Problema:* \`${error.message}\`\n*Apdoroti Duomenys:* \`${JSON.stringify(job.data)}\``);
+        // Svarbu išmesti klaidą, kad BullMQ žinotų, jog užduotis nepavyko
+        throw error;
     }
-});
+}
 
 
 // --- SERVERIO PALEIDIMAS ---
 const startServer = async () => {
     try {
+        // 1. Sukurti Bybit klientus
+        let initializedClients = 0;
+        for (let i = 1; i <= MAX_SUBACCOUNTS_NUM; i++) {
+            const apiKey = process.env[`BYBIT_API_KEY_${i}`];
+            const apiSecret = process.env[`BYBIT_API_SECRET_${i}`];
+            if (apiKey && apiSecret) {
+                bybitClients.set(i, new RestClientV5({ key: apiKey, secret: apiSecret, testnet: false }));
+                initializedClients++;
+            }
+        }
+        if (initializedClients === 0) {
+            console.error(`❌ Kritinė klaida: Nerasta jokių BYBIT_API_KEY_n / BYBIT_API_SECRET_n porų .env faile.`);
+            process.exit(1);
+        }
+        console.log(`✅ Sėkmingai inicializuota ${initializedClients} iš ${MAX_SUBACCOUNTS_NUM} galimų Bybit klientų.`);
+
+        // 2. Prisijungti prie Redis
         await redisClient.connect();
         console.log("✅ Sėkmingai prisijungta prie Redis.");
+
+        // 3. Paleisti web serverį
         app.listen(port, '0.0.0.0', () => {
-            const msg = `🚀 Bybit botas (v4.5 - su balansu ir P/L USD) paleistas ant porto ${port}`;
+            const msg = `🚀 Bybit botas (v5.0 - Multi-Account & Queue) paleistas ant porto ${port}\n- Aktyvuota ${initializedClients} sub-sąskaitų.\n- Eilės sistema veikia.`;
             console.log(msg);
             sendTelegramMessage(msg);
         });
